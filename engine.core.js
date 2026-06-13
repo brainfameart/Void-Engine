@@ -25,8 +25,9 @@ import { createTilemap } from './engine.tilemap.js';
 import { createAutoTilemap } from './engine.autotile.js';
 import { initCollisionOverlay, setCollisionVisible, refreshCollisionOverlay } from './engine.collision-overlay.js';
 import { setGridVisible } from './engine.renderer.js';
+import { initPersist, markDirty, flushSave, clearPersisted } from './engine.persist.js';
 
-export function startEngine(opts = {}) {
+export async function startEngine(opts = {}) {
     if (typeof PIXI === 'undefined') {
         document.getElementById('pixi-container').innerHTML =
             `<div style="color:red;padding:20px;">Error: PIXI.js failed to load.</div>`;
@@ -39,8 +40,13 @@ export function startEngine(opts = {}) {
         return;
     }
 
+    // ── Restore persisted state BEFORE PIXI boots ────────────
+    // Populates state.assets, state.scripts, state.scenes, etc.
+    await initPersist();
+
     // Expose state globally for context menu and debug
     window._zState = state;
+    window._zMarkDirty = markDirty;
 
     const container = document.getElementById('pixi-container');
     state.app = new PIXI.Application({
@@ -99,7 +105,13 @@ export function startEngine(opts = {}) {
         import('./engine.defaultscripts.js').then(m => {
             m.injectDefaultScripts(state.scripts);
             import('./engine.scripting.js').then(s => s.refreshScriptPanel());
+            markDirty();
         });
+    } else {
+        // Restored scripts from persisted session — refresh the panel
+        import('./engine.scripting.js').then(s => s.refreshScriptPanel());
+        // Also refresh prefabs panel since prefabs were restored
+        refreshPrefabPanel();
     }
 
     // Init collision overlay layer (must be after PIXI app is ready)
@@ -157,6 +169,12 @@ function initMenus() {
                 { separator: true },
                 { label: '💾  Save Project…',    action: () => saveProject() },
                 { label: '📂  Load Project…',    action: () => loadProject() },
+                { separator: true },
+                { label: '🗑️  Clear Saved Session', action: async () => {
+                    if (!confirm('Clear the auto-saved session? This cannot be undone.\nYour current work will remain open until you refresh.')) return;
+                    await clearPersisted();
+                    _logConsole('🗑️ Saved session cleared', '#f87171');
+                }},
             ]);
         });
     }

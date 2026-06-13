@@ -5,6 +5,7 @@
    ============================================================ */
 
 import { state } from './engine.state.js';
+import { markDirty } from './engine.persist.js';
 import { syncPixiToInspector, refreshHierarchy } from './engine.ui.js';
 
 // ── Build the mandatory Idle animation ───────────────────────
@@ -278,12 +279,15 @@ export function deleteSelected() {
 // ── Prefab stubs ──────────────────────────────────────────────
 export function saveAsPrefab(obj) {
     return import('./engine.prefabs.js').then(m => m.saveAsPrefab(obj));
+    markDirty();
 }
 export function instantiatePrefab(prefab, x = 0, y = 0) {
     return import('./engine.prefabs.js').then(m => m.instantiatePrefab(prefab, x, y));
+    markDirty();
 }
 export function applyPrefabToAll(prefabId, src) {
     return import('./engine.prefabs.js').then(m => m.applyPrefabToAll(prefabId, src));
+    markDirty();
 }
 
 // ── Z-order ───────────────────────────────────────────────────
@@ -294,6 +298,7 @@ export function moveObjectUp(obj) {
     state.sceneContainer.removeChild(obj);
     state.sceneContainer.addChildAt(obj, state.sceneContainer.children.indexOf(arr[i]));
     refreshHierarchy();
+    markDirty();
 }
 export function moveObjectDown(obj) {
     const arr = state.gameObjects, i = arr.indexOf(obj);
@@ -303,6 +308,7 @@ export function moveObjectDown(obj) {
     const ref = arr[i];
     state.sceneContainer.addChildAt(obj, state.sceneContainer.children.indexOf(ref)+1);
     refreshHierarchy();
+    markDirty();
 }
 export function sortByZ() {
     state.gameObjects.sort((a, b) => (a.unityZ || 0) - (b.unityZ || 0));
@@ -311,6 +317,7 @@ export function sortByZ() {
         state.sceneContainer.addChild(obj);
     }
     refreshHierarchy();
+    markDirty();
 }
 
 // ── Gizmo attachment ──────────────────────────────────────────

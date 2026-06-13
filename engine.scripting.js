@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    engine.scripting.js  —  ENTRY POINT (refactored)
    This file is intentionally small. It owns only the Script
@@ -61,6 +62,7 @@ export function refreshScriptUI(go) {
 export function deleteScriptByName(name) {
     const idx = state.scripts.findIndex(s => s.name === name);
     if (idx !== -1) state.scripts.splice(idx, 1);
+    markDirty();
     refreshScriptPanel();
 }
 

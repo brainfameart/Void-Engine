@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.prefabs.js  (v2 — Unity/GDevelop inspired)
    ============================================================ */
@@ -43,6 +44,7 @@ export function saveAsPrefab(obj) {
         createdAt:       Date.now(),
     };
     state.prefabs.push(prefab);
+    markDirty();
     obj.prefabId = prefab.id;
     refreshPrefabPanel();
     return prefab;
@@ -213,6 +215,7 @@ export function deletePrefab(prefabId) {
     const idx = state.prefabs.findIndex(p => p.id === prefabId);
     if (idx === -1) return;
     state.prefabs.splice(idx, 1);
+    markDirty();
     for (const obj of state.gameObjects) {
         if (obj.prefabId === prefabId) obj.prefabId = null;
     }

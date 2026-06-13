@@ -5,6 +5,7 @@
    selected object, and gizmo state.
    ============================================================ */
 
+import { markDirty } from './engine.persist.js';
 import { state } from './engine.state.js';
 import { drawGrid } from './engine.renderer.js';
 import { syncPixiToInspector, refreshHierarchy, refreshAssetPanel } from './engine.ui.js';
@@ -12,6 +13,7 @@ import { syncPixiToInspector, refreshHierarchy, refreshAssetPanel } from './engi
 // ── Scene registry (lives in state.scenes) ────────────────────
 // state.scenes  = [ { id, name, snapshot: {...} }, ... ]
 // state.activeSceneIndex = number
+    markDirty();
 
 let _sceneCounter = 1;
 
@@ -19,9 +21,11 @@ let _sceneCounter = 1;
 export function initScenes() {
     state.scenes           = [];
     state.activeSceneIndex = 0;
+    markDirty();
 
     // "Scene-1" is the scene that was already set up by startEngine
     state.scenes.push({
+    markDirty();
         id:       'scene_1',
         name:     'Scene-1',
         snapshot: null,   // null = currently loaded, no need to save
@@ -40,7 +44,9 @@ export function createScene(name) {
     const id      = 'scene_' + Date.now();
 
     state.scenes.push({ id, name: newName, snapshot: _emptySnapshot() });
+    markDirty();
     state.activeSceneIndex = state.scenes.length - 1;
+    markDirty();
 
     _loadScene(state.activeSceneIndex);
     _refreshSceneButton();
@@ -54,6 +60,7 @@ export function switchToScene(index) {
 
     _saveCurrentScene();
     state.activeSceneIndex = index;
+    markDirty();
     _loadScene(index);
     _refreshSceneButton();
     _refreshSceneDropdown();
@@ -132,6 +139,7 @@ export function playModeGotoScene(index, onReady = null) {
         }
 
         state.activeSceneIndex = index;
+    markDirty();
         _refreshSceneButton();
         _refreshSceneDropdown();
 
@@ -239,9 +247,11 @@ export function deleteScene(index) {
 
     _saveCurrentScene();
     state.scenes.splice(index, 1);
+    markDirty();
 
     const newIdx = Math.max(0, Math.min(index, state.scenes.length - 1));
     state.activeSceneIndex = newIdx;
+    markDirty();
     _loadScene(newIdx);
     _refreshSceneButton();
     _refreshSceneDropdown();

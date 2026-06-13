@@ -5,6 +5,7 @@
    ============================================================ */
 
 import { state } from './engine.state.js';
+import { markDirty, clearPersisted, flushSave } from './engine.persist.js';
 
 const PROJECT_VERSION = 1;
 
@@ -99,6 +100,8 @@ export function newProject() {
     import('./engine.scripting.js').then(m => m.refreshScriptPanel());
     import('./engine.scenes.js').then(m => m.initScenes());
     _logConsole('🆕 New project created', '#9bc');
+    clearPersisted();
+    markDirty();
 }
 
 // ── Apply loaded project data ─────────────────────────────────
@@ -161,6 +164,7 @@ function _applyProject(project) {
     }
 
     _logConsole('📂 Project loaded: ' + (project.name || 'unknown'), '#4ade80');
+    markDirty();
 }
 
 // ── Snapshot active scene into state.scenes ──────────────────

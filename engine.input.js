@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.input.js
    Camera controls, gizmo drag, keyboard shortcuts.

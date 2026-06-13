@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.autotile.js  v4
    Auto-tile brush system: 16-tile (4×4 blob) neighbor-aware
@@ -394,6 +395,7 @@ export function openAutoTileEditor(obj) {
     // Ensure cells is the new Array format
     if (!(d.cells instanceof Array)) {
         d.cells = _deserializeCells(d.cells, d.cols * d.rows);
+    markDirty();
     }
 
     const panel = document.createElement('div');

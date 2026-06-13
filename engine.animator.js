@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.animator.js
    Full-screen Animation Editor modal.
@@ -81,6 +82,7 @@ export function openAnimationEditor(obj) {
             ? state.assets.find(a => a.id === obj.assetId)?.dataURL ?? null
             : null;
         obj.animations.push({
+    markDirty();
             id: 'anim_idle_' + Date.now(),
             name: 'Idle', fps: 12, loop: true, isIdle: true,
             frames: idleDataURL
@@ -93,6 +95,7 @@ export function openAnimationEditor(obj) {
         const idleIdx = obj.animations.findIndex(a => a.isIdle);
         if (idleIdx > 0) {
             const [idle] = obj.animations.splice(idleIdx, 1);
+    markDirty();
             obj.animations.unshift(idle);
             obj.activeAnimIndex = Math.max(0, obj.activeAnimIndex);
         }
@@ -421,6 +424,7 @@ function _wire(modal, obj) {
     modal.querySelector('#anim-new-btn').addEventListener('click', () => {
         const anim = _newAnim('Animation ' + (obj.animations.length + 1));
         obj.animations.push(anim);
+    markDirty();
         obj.activeAnimIndex = obj.animations.length - 1;
         currentFrame = 0;
         _dirty = true;
@@ -436,6 +440,7 @@ function _wire(modal, obj) {
     modal.querySelector('#anim-name-input').addEventListener('input', (e) => {
         const anim = _currentAnim(obj);
         if (anim) { anim.name = e.target.value; _dirty = true; _renderAnimList(modal, obj); }
+    markDirty();
     });
 
     // ── Settings: fps ───────────────────────────────────────
@@ -446,6 +451,7 @@ function _wire(modal, obj) {
         fpsValue.textContent = fpsSlider.value;
         if (anim) {
             anim.fps = parseInt(fpsSlider.value);
+    markDirty();
             _dirty = true;
             _updateStats(modal, obj);
             if (isPlaying) { _stopPlay(); _startPlay(); }
@@ -456,6 +462,7 @@ function _wire(modal, obj) {
     modal.querySelector('#anim-loop-check').addEventListener('change', (e) => {
         const anim = _currentAnim(obj);
         if (anim) { anim.loop = e.target.checked; _dirty = true; }
+    markDirty();
     });
 
     // ── Delete animation ─────────────────────────────────────
@@ -475,6 +482,7 @@ function _wire(modal, obj) {
                 return;
             }
             obj.animations.splice(obj.activeAnimIndex, 1);
+    markDirty();
             obj.activeAnimIndex = Math.max(0, obj.activeAnimIndex - 1);
             _dirty = true;
             // No mid-session popup — user will be asked on close if needed
@@ -870,6 +878,7 @@ function _renderFrameStrip(modal, obj) {
         cell.querySelector('.frame-del-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             anim.frames.splice(i, 1);
+    markDirty();
             const cf = modal._getCurrentFrame?.() || 0;
             if (cf >= anim.frames.length) modal._selectFrame?.(Math.max(0, anim.frames.length - 1));
             _renderFrameStrip(modal, obj);
@@ -898,7 +907,9 @@ function _renderFrameStrip(modal, obj) {
             const src = parseInt(e.dataTransfer.getData('text/plain') || dragSrcIdx);
             if (isNaN(src) || src === i) { _renderFrameStrip(modal, obj); return; }
             const moved = anim.frames.splice(src, 1)[0];
+    markDirty();
             anim.frames.splice(i, 0, moved);
+    markDirty();
             _renderFrameStrip(modal, obj);
             _showFrame(modal, obj, i);
         });
@@ -1114,6 +1125,7 @@ async function _loadImageFile(file, anim) {
         reader.onload = (e) => {
             const frame = _newFrame(file.name.replace(/\.[^.]+$/, ''), e.target.result);
             anim.frames.push(frame);
+    markDirty();
             _stampFrameSize(frame, resolve);
         };
         reader.readAsDataURL(file);
@@ -1151,6 +1163,7 @@ async function _loadZip(file, anim) {
         const frameName = path.split('/').pop().replace(/\.[^.]+$/, '');
         const frame = _newFrame(frameName, dataURL);
         anim.frames.push(frame);
+    markDirty();
         await new Promise(res => _stampFrameSize(frame, res));
     }
 }

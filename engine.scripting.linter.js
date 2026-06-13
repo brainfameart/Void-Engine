@@ -59,7 +59,7 @@ const API_NAMES = new Set([
     "log","warn","error",
     "drawDebugLine","drawDebugCircle",
     "tween","trackTarget","hitFlash","objectShake","boundsClamp","offScreen",
-    "sceneVar","globalVar","store","opts","sceneSettings","physics","math","input",
+    "sceneVar","globalVar","GameSave","store","opts","sceneSettings","physics","math","input",
     "self","Key","Mouse","Gizmos","isWalking","isStuck",
     "screenToWorld","worldToScreen",
     "say","think","showChat","hideChat","chatSay","chatPlayer","aiChat",
@@ -268,7 +268,7 @@ const TYPO_MAP = {
     "screentpworld":"screenToWorld","worldtoscreen":"worldToScreen",
     "camerafollow":"cameraFollow",
     "iswalking":"isWalking","isstuck":"isStuck",
-    "scenevar":"sceneVar","globalvar":"globalVar",
+    "scenevar":"sceneVar","globalvar":"globalVar","gamesave":"GameSave",
 };
 
 // ── Levenshtein distance (for typo suggestions) ──────────────

@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.audio.js
    Positional (3D-like) audio sources placed in the scene.
@@ -50,6 +51,7 @@ export function createAudioSource(asset, worldX, worldY) {
 
     _buildAudioVisual(src);
     state.audioSources.push(src);
+    markDirty();
 
     import('./engine.ui.js').then(m => {
         m.refreshHierarchy();
@@ -195,6 +197,7 @@ export function removeAudioSource(src) {
     }
     const idx = state.audioSources.indexOf(src);
     if (idx !== -1) state.audioSources.splice(idx, 1);
+    markDirty();
     import('./engine.ui.js').then(m => {
         m.refreshHierarchy();
         m.deselectAudioSource();
@@ -336,6 +339,7 @@ export function restoreAudioSources(arr) {
         _buildAudioVisual(src);
         updateAudioSourceLabel(src);
         state.audioSources.push(src);
+    markDirty();
     }
 }
 

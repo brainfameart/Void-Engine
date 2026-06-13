@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.physics.inspector.js
    Physics inspector panel UI, polygon editor, auto-fit,
@@ -313,6 +314,7 @@ function _autoFitCollisionShape(obj, onDone) {
         if (!obj.physicsPolygons) obj.physicsPolygons = {};
         obj.physicsPolygons.shared = _defaultBox(raw.w, raw.h);
         obj.physicsShape = 'polygon';
+        markDirty();
         obj._polyUnit = 'container';
         obj.physicsPolygon = obj.physicsPolygons.shared.slice();
         try { onDone?.(); } catch(_) {}
@@ -348,6 +350,7 @@ function _alphaHullFromDataURL(dataURL, obj, onDone) {
         if (!obj.physicsPolygons) obj.physicsPolygons = {};
         obj.physicsPolygons.shared = _defaultBox(raw.w, raw.h);
         obj.physicsShape = 'polygon';
+        markDirty();
         obj.physicsPolygon = obj.physicsPolygons.shared.slice();
         obj._polyUnit = 'container';
         const firstFrameId = obj.animations?.[obj.activeAnimIndex ?? 0]?.frames?.[0]?.id;
@@ -393,9 +396,11 @@ export function bindPhysicsInspector(obj) {
 
     typeEl.addEventListener('change', () => {
         obj.physicsBody = typeEl.value;
+        markDirty();
         // Always use polygon shape so per-frame collision works
         if (typeEl.value !== 'none') {
             obj.physicsShape = 'polygon';
+        markDirty();
             obj._polyUnit    = 'container';
         }
         _pushUndo();
@@ -413,10 +418,14 @@ export function bindPhysicsInspector(obj) {
     // Collision shapes are set per-frame in the Animation Panel.
 
     fricEl?.addEventListener('change', () => { obj.physicsFriction = Math.max(0, Math.min(1, parseFloat(fricEl.value) || 0)); _pushUndo(); });
+        markDirty();
     bnceEl?.addEventListener('change', () => { obj.physicsRestitution = Math.max(0, Math.min(1, parseFloat(bnceEl.value) || 0)); _pushUndo(); });
+        markDirty();
     document.getElementById('phys-density')?.addEventListener('change', (e) => { obj.physicsDensity = Math.max(0.0001, parseFloat(e.target.value) || 0.001); _pushUndo(); });
+        markDirty();
     document.getElementById('phys-gravity-scale')?.addEventListener('change', (e) => {
         obj.physicsGravityScale = parseFloat(e.target.value) ?? 1;
+        markDirty();
         // Wake the body immediately so new gravity takes effect without needing a script
         if (obj._physicsBody) { try { obj._physicsBody.setAwake(true); } catch(_) {} }
         _pushUndo();
@@ -434,9 +443,13 @@ export function bindPhysicsInspector(obj) {
         _pushUndo();
     });
     document.getElementById('phys-fixed-rot')?.addEventListener('change', (e) => { obj.physicsFixedRotation = e.target.checked; _pushUndo(); });
+        markDirty();
     document.getElementById('phys-sensor')?.addEventListener('change', (e) => { obj.physicsIsSensor = e.target.checked; _pushUndo(); });
+        markDirty();
     document.getElementById('phys-col-cat')?.addEventListener('change', (e) => { obj.physicsCollisionCategory = Math.max(1, parseInt(e.target.value) || 1); _pushUndo(); });
+        markDirty();
     document.getElementById('phys-col-mask')?.addEventListener('change', (e) => { obj.physicsCollisionMask = parseInt(e.target.value) ?? -1; _pushUndo(); });
+        markDirty();
 
     document.getElementById('phys-show-collision')?.addEventListener('click', () => {
         import('./engine.collision-overlay.js').then(m => {
@@ -724,6 +737,7 @@ export function openPolygonEditor(obj, frameId = 'shared', opts = {}) {
             if (!obj.physicsPolygons) obj.physicsPolygons = {};
             obj.physicsPolygons[frameId] = pts.map(p => ({ x: p.x, y: p.y }));
             obj.physicsShape = 'polygon';
+        markDirty();
             obj._polyUnit = 'container';
             if (frameId === 'shared') {
                 obj.physicsPolygon = obj.physicsPolygons.shared.slice();
@@ -826,6 +840,7 @@ export function restorePhysics(obj, snap) {
     obj.physicsIsSensor          = !!snap.physicsIsSensor;
     obj.physicsImmovable         = !!snap.physicsImmovable;
     obj.physicsCollisionCategory = snap.physicsCollisionCategory ?? 1;
+        markDirty();
     obj.physicsCollisionMask     = snap.physicsCollisionMask     ?? -1;
     obj.physicsSize     = snap.physicsSize     ? JSON.parse(JSON.stringify(snap.physicsSize))     : null;
     obj.physicsPolygon  = snap.physicsPolygon  ? JSON.parse(JSON.stringify(snap.physicsPolygon))  : null;

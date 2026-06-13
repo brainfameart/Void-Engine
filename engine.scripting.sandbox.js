@@ -610,6 +610,93 @@ function _buildSandbox(obj, instRef) {
          */
         get globalVar() { return _globalVars; },
 
+
+        // ── GAME SAVE (persistent across page refresh) ────────
+        /**
+         * GameSave  — store and retrieve player progress that
+         * survives page refresh, browser close, and re-open.
+         *
+         * All data is namespaced to a slot so multiple save
+         * files can coexist (slot defaults to "default").
+         *
+         * Quick reference:
+         *   GameSave.set("score", 42)
+         *   GameSave.get("score", 0)       // 0 = default if not found
+         *   GameSave.has("score")          // → true / false
+         *   GameSave.delete("score")
+         *   GameSave.setAll({ score:42, level:3 })
+         *   GameSave.getAll()              // → { score:42, level:3 }
+         *   GameSave.clear()               // wipe entire slot
+         *   GameSave.slot("file2").set("score", 0)  // named slots
+         */
+        GameSave: (() => {
+            const _LS_PREFIX = '__zgsave__';
+            function _load(slot) {
+                try { return JSON.parse(localStorage.getItem(_LS_PREFIX + slot) || 'null') || {}; }
+                catch { return {}; }
+            }
+            function _save(slot, data) {
+                try { localStorage.setItem(_LS_PREFIX + slot, JSON.stringify(data)); }
+                catch (e) { _logConsole('GameSave: storage full — ' + e.message, '#f87171'); }
+            }
+            function _makeSlot(slotName) {
+                return {
+                    /** Save a single key. Value can be any JSON-serialisable type. */
+                    set(key, value) {
+                        const d = _load(slotName);
+                        d[key] = value;
+                        _save(slotName, d);
+                    },
+                    /** Read a key. Returns defaultValue if not found. */
+                    get(key, defaultValue = null) {
+                        const d = _load(slotName);
+                        return Object.prototype.hasOwnProperty.call(d, key) ? d[key] : defaultValue;
+                    },
+                    /** Returns true if the key exists in this slot. */
+                    has(key) {
+                        return Object.prototype.hasOwnProperty.call(_load(slotName), key);
+                    },
+                    /** Remove a single key. */
+                    delete(key) {
+                        const d = _load(slotName);
+                        delete d[key];
+                        _save(slotName, d);
+                    },
+                    /** Save multiple keys at once from a plain object. */
+                    setAll(obj) {
+                        const d = _load(slotName);
+                        Object.assign(d, obj);
+                        _save(slotName, d);
+                    },
+                    /** Return every key/value stored in this slot as a plain object. */
+                    getAll() { return { ..._load(slotName) }; },
+                    /** Increment a numeric key by amount (default 1). Creates it at 0 first if missing. */
+                    increment(key, amount = 1) {
+                        const d = _load(slotName);
+                        d[key] = (typeof d[key] === 'number' ? d[key] : 0) + amount;
+                        _save(slotName, d);
+                        return d[key];
+                    },
+                    /** Wipe all data in this slot. */
+                    clear() { localStorage.removeItem(_LS_PREFIX + slotName); },
+                    /** Switch to a different named slot. */
+                    slot(name) { return _makeSlot(String(name)); },
+                    /** The slot name this handle points to. */
+                    get slotName() { return slotName; },
+                    /** List all slot names that have data. */
+                    listSlots() {
+                        const slots = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const k = localStorage.key(i);
+                            if (k && k.startsWith(_LS_PREFIX)) slots.push(k.slice(_LS_PREFIX.length));
+                        }
+                        return slots;
+                    },
+                };
+            }
+            return _makeSlot('default');
+        })(),
+
         // ── SOUND ─────────────────────────────────────────────
         /**
          * Play a sound asset by name.

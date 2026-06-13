@@ -1,3 +1,4 @@
+import { markDirty } from './engine.persist.js';
 /* ============================================================
    Zengine — engine.tilemap.js
    TILESET tilemap: paint individual tiles from a single sliced
@@ -449,6 +450,7 @@ function _wireTilemapEditor(panel, obj) {
     function _undo() {
         if (!undoStack.length) return;
         d.tiles = undoStack.pop();
+    markDirty();
         _drawMap();
     }
 
@@ -523,6 +525,7 @@ function _wireTilemapEditor(panel, obj) {
             }
         }
         d.cols = nc; d.rows = nr; d.tileW = tw; d.tileH = th; d.tiles = newTiles;
+    markDirty();
         d.filterMode = fm;
         if (tilesetImg) {
             d.tilesetCols = Math.max(1, Math.floor(tilesetImg.width  / tw));
@@ -576,6 +579,7 @@ export function snapshotTilemap(obj) {
         isTilemap: true,
         label: obj.label, x: obj.x, y: obj.y, unityZ: obj.unityZ || 0,
         tilemapData: { ...obj.tilemapData, tiles: Array.from(obj.tilemapData.tiles) },
+    markDirty();
     };
 }
 
@@ -583,6 +587,7 @@ export async function restoreTilemap(s) {
     const obj = createTilemap(s.x, s.y);
     obj.label = s.label; obj.unityZ = s.unityZ || 0;
     obj.tilemapData = { ...s.tilemapData, tiles: new Int32Array(s.tilemapData.tiles) };
+    markDirty();
     _migrate(obj.tilemapData);
     _buildTilemapHelper(obj);
     rebuildTilemapSprites(obj);
