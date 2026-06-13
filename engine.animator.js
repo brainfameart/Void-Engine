@@ -82,7 +82,6 @@ export function openAnimationEditor(obj) {
             ? state.assets.find(a => a.id === obj.assetId)?.dataURL ?? null
             : null;
         obj.animations.push({
-    markDirty();
             id: 'anim_idle_' + Date.now(),
             name: 'Idle', fps: 12, loop: true, isIdle: true,
             frames: idleDataURL
@@ -95,7 +94,6 @@ export function openAnimationEditor(obj) {
         const idleIdx = obj.animations.findIndex(a => a.isIdle);
         if (idleIdx > 0) {
             const [idle] = obj.animations.splice(idleIdx, 1);
-    markDirty();
             obj.animations.unshift(idle);
             obj.activeAnimIndex = Math.max(0, obj.activeAnimIndex);
         }

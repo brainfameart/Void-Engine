@@ -579,7 +579,6 @@ export function snapshotTilemap(obj) {
         isTilemap: true,
         label: obj.label, x: obj.x, y: obj.y, unityZ: obj.unityZ || 0,
         tilemapData: { ...obj.tilemapData, tiles: Array.from(obj.tilemapData.tiles) },
-    markDirty();
     };
 }
 

@@ -25,7 +25,6 @@ export function initScenes() {
 
     // "Scene-1" is the scene that was already set up by startEngine
     state.scenes.push({
-    markDirty();
         id:       'scene_1',
         name:     'Scene-1',
         snapshot: null,   // null = currently loaded, no need to save
