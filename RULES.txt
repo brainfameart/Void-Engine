@@ -1,0 +1,6 @@
+CONTRACT: 
+this is what you must keep in mine while coding,
+1. when you load a CDN make sure that i can click that link and dowlaod that file and replce the link with the local file. 
+never load a CDN that i need node.js to dowload the file, or its too compilcated to dowlaod. all i have to do is clcik the like CTRL S 
+then save that file and replace the link with the file name i dowlaoded. as you can see i have already loaded pixi.js and matter.js and i can easily chnage 
+that link with the dowlaoded file just by going to the link and click CTRl S and repl;ace the link with teh dowlaoded file. so this game engine can run offline.
