@@ -868,6 +868,15 @@ var sceneVar  = api.sceneVar;
  */
 var globalVar = api.globalVar;
 
+/**
+ * GameSave — store player progress that survives page close and refresh.
+ * GameSave.set("score", 100)        GameSave.get("score", 0)
+ * GameSave.has("key")               GameSave.delete("key")
+ * GameSave.increment("coins", 1)    GameSave.clear()
+ * GameSave.slot("file2").set(...)   GameSave.listSlots()
+ */
+var GameSave = api.GameSave;
+
 // ── Per-script key/value store ────────────────────────────────
 /** store — private to this script, reset on Play stop */
 var store = api.store;
