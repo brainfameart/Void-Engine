@@ -178,6 +178,7 @@ export function setTextContent(obj, text) {
     if (!obj?.isText || !obj._pixiText) return;
     obj.textContent = String(text);
     obj._pixiText.text = String(text);
+    markDirty();
 }
 
 /**
@@ -202,6 +203,7 @@ export function setTextStyle(obj, styleOpts = {}) {
     if (styleOpts.dropShadowDistance != null) s.dropShadowDistance = styleOpts.dropShadowDistance;
     // Mirror to stored textStyle for save/restore
     Object.assign(obj.textStyle, styleOpts);
+    markDirty();
 }
 
 // ── Select Object ─────────────────────────────────────────────

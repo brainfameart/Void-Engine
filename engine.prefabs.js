@@ -224,7 +224,7 @@ export function deletePrefab(prefabId) {
 
 export function renamePrefab(prefabId, name) {
     const p = state.prefabs.find(p => p.id === prefabId);
-    if (p) { p.name = name; refreshPrefabPanel(); }
+    if (p) { p.name = name; markDirty(); refreshPrefabPanel(); }
 }
 
 export function unlinkFromPrefab(obj) {

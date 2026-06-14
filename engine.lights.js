@@ -865,6 +865,7 @@ export function bindLightInspector(obj) {
             const valEl = document.getElementById(fmtId);
             if (valEl) valEl.textContent = fmt(p[prop]);
             _buildLightHelper(obj);
+            import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
         });
     };
 
@@ -872,16 +873,21 @@ export function bindLightInspector(obj) {
     if (col) col.addEventListener('input', () => {
         p.color = parseInt(col.value.replace('#', ''), 16);
         _buildLightHelper(obj);
+        import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
     });
 
     const en = document.getElementById('li-enabled');
     if (en) en.addEventListener('change', () => {
         p.enabled = en.checked;
         if (obj._lightHelper) obj._lightHelper.alpha = p.enabled ? 1 : 0.3;
+        import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
     });
 
     const cs = document.getElementById('li-cast-shadows');
-    if (cs) cs.addEventListener('change', () => { p.castShadows = cs.checked; });
+    if (cs) cs.addEventListener('change', () => {
+        p.castShadows = cs.checked;
+        import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
+    });
 
     bind('li-intensity', 'intensity', parseFloat, 'li-intensity-val', v => v.toFixed(2));
     bind('li-radius',    'radius',    parseFloat, 'li-radius-val',    v => v + 'px');

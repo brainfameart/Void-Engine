@@ -463,7 +463,7 @@ export function bindPhysicsInspector(obj) {
     });
 }
 
-function _pushUndo() { import('./engine.history.js').then(({ pushUndo }) => pushUndo()); }
+function _pushUndo() { import('./engine.history.js').then(({ pushUndo }) => pushUndo()); markDirty(); }
 
 // ── Polygon Editor ────────────────────────────────────────────
 export function openPolygonEditor(obj, frameId = 'shared', opts = {}) {

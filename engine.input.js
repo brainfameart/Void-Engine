@@ -201,6 +201,7 @@ export function initGizmoDrag() {
     }
 
     function onDragEnd() {
+        if (activeDrag) markDirty();   // position/scale/rotation changed — persist it
         activeDrag = null;
         activeObj  = null;
         updateCameraBoundsIfVisible();

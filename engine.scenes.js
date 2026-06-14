@@ -19,6 +19,22 @@ let _sceneCounter = 1;
 
 // ── Init: create the first scene slot ────────────────────────
 export function initScenes() {
+    // If persist already restored scenes, skip the blank-slate reset and
+    // instead just load the saved active scene (which has its snapshot).
+    if (state.scenes && state.scenes.length > 0) {
+        // Sync _sceneCounter so new scenes get unique names
+        state.scenes.forEach(s => {
+            const m = s.name && s.name.match(/Scene-(\d+)/);
+            if (m) _sceneCounter = Math.max(_sceneCounter, parseInt(m[1], 10));
+        });
+        // Load the persisted active scene (restores objects onto the canvas)
+        _loadScene(state.activeSceneIndex);
+        _refreshSceneButton();
+        _refreshSceneDropdown();
+        return;
+    }
+
+    // Fresh start — no persisted data
     state.scenes           = [];
     state.activeSceneIndex = 0;
     markDirty();
@@ -282,6 +298,8 @@ function _saveCurrentScene() {
             return {
                 isText: true,
                 label: obj.label, x: obj.x, y: obj.y, unityZ: obj.unityZ || 0,
+                scaleX: obj.scale.x, scaleY: obj.scale.y,
+                rotation: obj.rotation,
                 textContent:  obj.textContent ?? '',
                 textStyle:    JSON.parse(JSON.stringify(obj.textStyle ?? {})),
                 visible:      obj.visible !== false,
@@ -430,6 +448,9 @@ function _loadScene(index) {
                     if (!obj) return;
                     obj.label    = s.label;    obj.unityZ  = s.unityZ || 0;
                     obj.visible  = s.visible !== false; obj.alpha = s.alpha ?? 1;
+                    if (s.scaleX !== undefined) obj.scale.x = s.scaleX;
+                    if (s.scaleY !== undefined) obj.scale.y = s.scaleY;
+                    if (s.rotation !== undefined) obj.rotation = s.rotation;
                     obj.scriptName   = s.scriptName   ?? null;
                     obj._scriptTag   = s.scriptTag    ?? null;
                     obj._scriptGroup = s.scriptGroup  ?? null;
@@ -445,7 +466,10 @@ function _loadScene(index) {
                 obj.label = s.label; obj.scale.x = s.scaleX; obj.scale.y = s.scaleY;
                 obj.rotation = s.rotation; obj.unityZ = s.unityZ; obj.prefabId = s.prefabId || null;
                 if (obj.spriteGraphic?.tint !== undefined) obj.spriteGraphic.tint = s.tint;
-                if (s.animations?.length) { obj.animations = JSON.parse(JSON.stringify(s.animations)); obj.activeAnimIndex = s.activeAnimIndex || 0; }
+                if (s.animations?.length) {
+                    obj.animations = JSON.parse(JSON.stringify(s.animations));
+                    obj.activeAnimIndex = s.activeAnimIndex || 0;
+                }
                 obj.physicsBody              = s.physicsBody             ?? 'none';
                 obj.physicsFriction          = s.physicsFriction         ?? 0.3;
                 obj.physicsRestitution       = s.physicsRestitution      ?? 0.1;
@@ -468,6 +492,13 @@ function _loadScene(index) {
                 obj.scriptName  = s.scriptName  ?? null;
                 obj._scriptTag  = s.scriptTag   ?? null;
                 obj._scriptGroup= s.scriptGroup ?? null;
+                // Reapply animation frames so the sprite shows the correct animation,
+                // not just the raw asset sprite that createImageObject built
+                if (obj.animations?.length) {
+                    import('./engine.animator.js').then(({ reapplyAnimationToObject }) => {
+                        reapplyAnimationToObject(obj);
+                    });
+                }
                 if (state._bindGizmoHandles) state._bindGizmoHandles(obj);
             });
         });

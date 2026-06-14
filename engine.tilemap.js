@@ -291,6 +291,7 @@ function _wireTilemapEditor(panel, obj) {
         rebuildTilemapSprites(obj);
         _buildTilemapHelper(obj);
         import('./engine.ui.js').then(m => { m.syncPixiToInspector(); m.refreshHierarchy(); });
+        markDirty();
         panel.remove();
         window.removeEventListener('keydown', _onKey);
     });
@@ -422,6 +423,7 @@ function _wireTilemapEditor(panel, obj) {
             d.tiles[i] = -1;
         }
         _drawMap();
+        markDirty();
     }
 
     function _fill(c, r) {
@@ -441,6 +443,7 @@ function _wireTilemapEditor(panel, obj) {
             queue.push([cc-1,cr],[cc+1,cr],[cc,cr-1],[cc,cr+1]);
         }
         _drawMap();
+        markDirty();
     }
 
     function _pushUndo() {

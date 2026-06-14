@@ -63,6 +63,7 @@ export function setGridVisible(visible) {
     if (badge) badge.style.display = visible ? 'block' : 'none';
     const btn = document.getElementById('btn-grid-toggle');
     if (btn) btn.style.color = visible ? '#6adf88' : '#555';
+    import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
 }
 
 export function drawGrid() {

@@ -75,6 +75,7 @@ export function setCollisionVisible(v) {
     const btn   = document.getElementById('btn-collision-toggle');
     if (badge) badge.style.display = _visible ? 'block' : 'none';
     if (btn)   btn.classList.toggle('active', _visible);
+    import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
 }
 
 export function refreshCollisionOverlay() {

@@ -133,6 +133,21 @@ function _snapshotObjects() {
                 autoTileData: { ...td, cells: Array.from(td.cells), brushList: td.brushList.slice() },
             };
         }
+        if (obj.isText) {
+            return {
+                isText: true,
+                label: obj.label, x: obj.x, y: obj.y, unityZ: obj.unityZ || 0,
+                scaleX: obj.scale.x, scaleY: obj.scale.y,
+                rotation: obj.rotation,
+                textContent:  obj.textContent ?? '',
+                textStyle:    JSON.parse(JSON.stringify(obj.textStyle ?? {})),
+                visible:      obj.visible !== false,
+                alpha:        obj.alpha ?? 1,
+                scriptName:   obj.scriptName  ?? null,
+                scriptTag:    obj._scriptTag  ?? null,
+                scriptGroup:  obj._scriptGroup ?? null,
+            };
+        }
         return {
             label: obj.label, isImage: obj.isImage, assetId: obj.assetId,
             prefabId: obj.prefabId || null,

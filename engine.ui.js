@@ -4,6 +4,7 @@
    ============================================================ */
 
 import { state, PIXELS_PER_UNIT } from './engine.state.js';
+import { markDirty } from './engine.persist.js';
 
 let els = null;
 
@@ -276,6 +277,7 @@ export function syncInspectorToPixi() {
     }
 
     if (zChanged) import('./engine.objects.js').then(m => m.sortByZ());
+    markDirty();
 }
 
 // ── Scene Settings Panel (shown when nothing selected) ────────
@@ -403,6 +405,7 @@ export function refreshSceneSettingsPanel() {
         const hex = parseInt(e.target.value.replace('#',''), 16);
         state.sceneSettings.bgColor = hex;
         if (state.app?.renderer) state.app.renderer.background.color = hex;
+        markDirty();
     });
 
     const wEl = panel.querySelector('#scene-game-w');
@@ -412,10 +415,12 @@ export function refreshSceneSettingsPanel() {
     wEl?.addEventListener('change', () => {
         state.sceneSettings.gameWidth = Math.max(100, parseInt(wEl.value) || 1280);
         import('./engine.playmode.js').then(m => m.drawCameraBounds());
+        markDirty();
     });
     hEl?.addEventListener('change', () => {
         state.sceneSettings.gameHeight = Math.max(100, parseInt(hEl.value) || 720);
         import('./engine.playmode.js').then(m => m.drawCameraBounds());
+        markDirty();
     });
 
     const presetEl = panel.querySelector('#scene-cam-preset');
@@ -434,6 +439,7 @@ export function refreshSceneSettingsPanel() {
         if (wEl) wEl.value = state.sceneSettings.gameWidth;
         if (hEl) hEl.value = state.sceneSettings.gameHeight;
         import('./engine.playmode.js').then(m => m.drawCameraBounds());
+        markDirty();
     });
 
     const scalingEl   = panel.querySelector('#scene-scaling-mode');
@@ -441,6 +447,7 @@ export function refreshSceneSettingsPanel() {
     scalingEl?.addEventListener('change', () => {
         state.sceneSettings.scalingMode = scalingEl.value;
         if (scalingInfo) scalingInfo.textContent = _scalingModeInfo(scalingEl.value);
+        markDirty();
     });
 }
 
@@ -566,6 +573,7 @@ export function initInspectorListeners() {
         if (sp && sp.tint !== undefined) {
             sp.tint = tintVal;
             go.tint  = tintVal;   // store on object for snapshot/restore
+            markDirty();
         }
     });
 
@@ -590,6 +598,7 @@ export function initInspectorListeners() {
             }
             els.objName.value = state.gameObject.label;
             refreshHierarchy();
+            markDirty();
         });
     }
 
@@ -639,6 +648,7 @@ export function initInspectorListeners() {
         if (!confirm(`Remove script "${go.scriptName}" from "${go.label}"?`)) return;
         go.scriptName = null;
         syncPixiToInspector();
+        markDirty();
         import('./engine.console.js').then(m => m.engineLog(`✂️ Script detached from "${go.label}"`, 'warn'));
     });
 }

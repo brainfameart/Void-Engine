@@ -106,6 +106,7 @@ export function _buildAudioVisual(src) {
         if (_dragging) {
             _dragging = false;
             import('./engine.history.js').then(m => m.pushUndo());
+            markDirty();
         }
     };
 
@@ -274,6 +275,7 @@ export function bindAudioInspector(src) {
         posXEl.addEventListener('input', () => {
             src.x = (parseFloat(posXEl.value) || 0) * PIXELS_PER_UNIT;
             if (src._container) src._container.x = src.x;
+            markDirty();
         });
     }
     if (posYEl) {
@@ -281,12 +283,14 @@ export function bindAudioInspector(src) {
         posYEl.addEventListener('input', () => {
             src.y = -(parseFloat(posYEl.value) || 0) * PIXELS_PER_UNIT;
             if (src._container) src._container.y = src.y;
+            markDirty();
         });
     }
     if (volEl) {
         volEl.addEventListener('input', () => {
             src.volume = parseFloat(volEl.value);
             if (volDisp) volDisp.textContent = Math.round(src.volume * 100) + '%';
+            markDirty();
         });
         volEl.addEventListener('change', _pushU);
     }
@@ -295,12 +299,14 @@ export function bindAudioInspector(src) {
         rangeEl.addEventListener('input', () => {
             src.range = Math.max(10, parseFloat(rangeEl.value) || 10);
             updateAudioRange(src);
+            markDirty();
         });
     }
     if (loopEl) {
         loopEl.addEventListener('change', () => {
             _pushU();
             src.loop = loopEl.checked;
+            markDirty();
         });
     }
     if (delBtn) {

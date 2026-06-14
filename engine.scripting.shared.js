@@ -467,4 +467,5 @@ export function saveScript(name, code) {
     // Refresh the script panel UI if it's mounted (avoids importing
     // engine.scripting.js from here, which would be circular).
     import('./engine.scripting.js').then(m => m.refreshScriptPanel()).catch(() => {});
+    import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
 }

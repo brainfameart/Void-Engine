@@ -423,6 +423,7 @@ function _wireModal(modal, obj) {
             import('./engine.animator.js').then(m => m.openAnimationEditor(obj));
         }
 
+        markDirty();
         closeModal();
     });
 }

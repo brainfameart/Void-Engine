@@ -82,6 +82,7 @@ export function pushUndo() {
     if (state.undoStack.length > MAX_HISTORY) state.undoStack.shift();
     state.redoStack = [];
     _updateUndoButtons();
+    import('./engine.persist.js').then(m => m.markDirty()).catch(() => {});
 }
 
 // ── Undo ─────────────────────────────────────────────────────

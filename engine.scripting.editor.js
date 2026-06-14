@@ -977,6 +977,7 @@ export function promptLoadScript(obj) {
             _logConsole(`📎 "${b.dataset.name}" attached to "${obj.label}"`, '#4ade80');
             modal.remove();
             import('./engine.ui.js').then(m => m.syncPixiToInspector());
+            import('./engine.persist.js').then(m => m.markDirty());
         };
     });
     modal.querySelector('#sl-detach')?.addEventListener('click', () => {
@@ -984,6 +985,7 @@ export function promptLoadScript(obj) {
         _logConsole(`✂️ "${old}" detached from "${obj.label}"`, '#facc15');
         modal.remove();
         import('./engine.ui.js').then(m => m.syncPixiToInspector());
+        import('./engine.persist.js').then(m => m.markDirty());
     });
     modal.querySelector('#sl-cancel').onclick = () => modal.remove();
     modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
