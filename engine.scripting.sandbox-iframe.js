@@ -140,19 +140,50 @@ export function runInSandbox(fn, api, out, iframe) {
 
     const cw = iframe.contentWindow;
 
-    // Inject the api into the iframe's global scope.
-    // Since sandbox="allow-scripts" WITHOUT allow-same-origin, the iframe is
-    // cross-origin from itself — but because we created it with a blob URL from
-    // the SAME page's JS heap, the contentWindow IS accessible from the parent
-    // for direct property assignment. We exploit this to pass the live api object
-    // without any serialization.
+    // Inject the live api + output collector into the iframe's global scope.
+    // The blob-URL iframe shares the same JS heap, so direct property assignment
+    // works without serialization — PIXI objects, callbacks, etc. pass by reference.
     cw.__api__ = api;
     cw.__out__ = out;
+    cw.__fn__  = fn;
 
-    // Run the already-compiled AsyncFunction inside the iframe's context.
-    // fn.call(thisArg, api, out) — we bind `this` to api as well.
-    // We do this by re-binding to the iframe's copy of the api reference.
-    return fn.call(cw.__api__, cw.__api__, cw.__out__);
+    // CRITICAL: We must COMPILE and CALL the function inside the iframe's own
+    // AsyncFunction constructor — not the parent's.  A function compiled with
+    // the parent's `new AsyncFunction(...)` captures the parent's global scope,
+    // meaning `document`, `window`, `localStorage` etc. inside user code would
+    // resolve to the PARENT page's globals, bypassing the sandbox entirely.
+    //
+    // By using the iframe's own AsyncFunction constructor (cw.AsyncFunction),
+    // the function is compiled inside the sandboxed context where:
+    //   ✗  document / window.document  → SecurityError or undefined
+    //   ✗  localStorage / sessionStorage → SecurityError
+    //   ✗  location.href = ...          → blocked
+    //   ✗  alert() / prompt()           → blocked
+    //   ✅ api.*                         → works (injected via cw.__api__)
+    //
+    // The iframe's AsyncFunction is retrieved via the same heap-access trick.
+    try {
+        const iframeAsyncFn = Object.getPrototypeOf(
+            cw.eval('(async function(){})')
+        ).constructor;
+
+        // Re-compile fn's source inside the iframe.
+        // fn.toString() gives us the original source string.
+        // We wrap it to extract just the body (strip async function(api,__out){...}).
+        const src = fn.toString();
+        // Extract the body between the first { and last }
+        const bodyStart = src.indexOf('{') + 1;
+        const bodyEnd   = src.lastIndexOf('}');
+        const body      = src.slice(bodyStart, bodyEnd);
+
+        const iframeFn = new iframeAsyncFn('api', '__out', body);
+        return iframeFn.call(cw.__api__, cw.__api__, cw.__out__);
+    } catch (secErr) {
+        // Fallback: if iframe eval is blocked (exported game, unusual CSP),
+        // run directly — same behaviour as before, acceptable for game-only mode.
+        console.warn('[Zengine] iframe re-compile failed, running direct:', secErr.message);
+        return fn.call(api, api, out);
+    }
 }
 
 /**

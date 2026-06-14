@@ -90,6 +90,36 @@ export function _scanScriptForDangers(code, scriptName, objLabel) {
         { re: /\bfor\s*\(\s*;;\s*\)\s*\{/,    msg: 'for(;;){} infinite loop will freeze the engine. Use onUpdate(fn) for repeating logic.' },
         { re: /\bdocument\.getElementById\s*\([^)]+\)\s*\.innerHTML\s*=/,
                                                 msg: 'Writing innerHTML to engine DOM elements can destroy the UI. Use the engine API instead.' },
+        // Constructor/prototype escape attempts
+        { re: /\.constructor\s*\.\s*constructor/,
+                                                msg: 'constructor.constructor escape attempt detected — this bypasses the sandbox.' },
+        { re: /\b__proto__\s*\.\s*constructor/,
+                                                msg: '__proto__.constructor escape attempt detected.' },
+        { re: /\bglobalThis\b/,               msg: 'globalThis is not available in scripts — use the engine API instead.' },
+        // Obfuscated infinite loops that bypass while(true) check
+        { re: /while\s*\([^)]*Date\.now[^)]*\)\s*\{/,
+                                                msg: 'Timing-based busy loop will freeze the engine. Use wait() or onUpdate() instead.' },
+        // IDB/storage wipe attempts — caught by iframe but block as defense-in-depth
+        { re: /\bindexedDB\s*\.\s*deleteDatabase\s*\(/,
+                                                msg: 'Deleting IndexedDB databases will destroy saved projects.' },
+        { re: /\blocalStorage\s*\.\s*clear\s*\(/,
+                                                msg: 'localStorage.clear() is not available in scripts.' },
+        // UI panel destruction
+        { re: /\.innerHTML\s*=\s*['"]{2}|outerHTML\s*=\s*['"]{2}/,
+                                                msg: 'Clearing innerHTML/outerHTML on engine panels will destroy the UI.' },
+        { re: /\.remove\s*\(\s*\)(?!\s*;?\s*\/\/.*sprite|obj|clone|drawText)/,
+                                                msg: 'Calling .remove() on DOM elements may destroy the engine UI. Only use destroySelf() on game objects.' },
+        { re: /document\s*\.\s*(?:head|documentElement)\s*\.\s*innerHTML/,
+                                                msg: 'Clearing document.head or documentElement will break the engine completely.' },
+        // Style/class manipulation on engine elements  
+        { re: /document\s*\.\s*getElementById\s*\([^)]+\)\s*\.\s*style\s*\.\s*display\s*=\s*['"]none['"]/,
+                                                msg: 'Hiding engine UI elements by ID can break the layout. Use the engine API instead.' },
+        // window global clobber
+        { re: /\bwindow\s*\.\s*(?:PIXI|planck|state|markDirty|startEngine)\s*=/,
+                                                msg: 'Overwriting engine globals (PIXI, planck, state) will crash the engine.' },
+        // Recursive cloneSelf without limit
+        { re: /function\s+\w+[^}]*cloneSelf[^}]*\w+\s*\([^)]*\)[^}]*}/,
+                                                msg: 'Recursive functions that call cloneSelf can hit the clone limit. Add a depth/count guard.' },
     ];
 
     for (const { re, msg } of fatalPatterns) {
@@ -106,6 +136,15 @@ export function _scanScriptForDangers(code, scriptName, objLabel) {
         { re: /\balert\s*\(/,                   msg: `alert() pauses the whole browser tab. Use log() to print messages instead.` },
         { re: /\beval\s*\(/,                    msg: `eval() is unsafe and may throw CSP errors. Build logic directly in the script.` },
         { re: /new\s+Function\s*\(/,            msg: `new Function() may be blocked by CSP. Build logic directly in the script.` },
+        // Prototype/object manipulation that could corrupt engine state
+        { re: /Object\s*\.\s*(?:defineProperty|setPrototypeOf|assign)\s*\([^,]*prototype/,
+                                              msg: `Modifying Object prototypes can corrupt engine internals. Only modify your own objects.` },
+        { re: /\b__proto__\b/,               msg: `__proto__ access is restricted in scripts — use standard property assignment instead.` },
+        // Clone bomb detection
+        { re: /for\s*\([^)]*\)\s*\{[^}]*clone(?:Self|Object|InPlace)\s*\(/,
+                                              msg: `Spawning clones in a for-loop can hit the 128-clone limit instantly. Use onUpdate + a counter instead.` },
+        // Import dynamic module access
+        { re: /\bimport\s*\(\s*['\`"][./]/,  msg: `import() of engine modules from scripts is restricted — use the engine API instead.` },
     ];
 
     for (const { re, msg } of warnPatterns) {

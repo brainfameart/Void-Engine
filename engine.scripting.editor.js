@@ -252,17 +252,17 @@ const COMPLETIONS = [
     // Shared variables
     { n:'sceneVar',          m:'vars',      v:'sceneVar.${1:myVar}' },
     { n:'globalVar',         m:'vars',      v:'globalVar.${1:myVar}' },
-    { n:'GameSave',          m:'save',      v:'GameSave' },
-    { n:'GameSave.set',      m:'save',      v:"GameSave.set('${1:key}', ${2:value})" },
-    { n:'GameSave.get',      m:'save',      v:"GameSave.get('${1:key}', ${2:defaultValue})" },
-    { n:'GameSave.has',      m:'save',      v:"GameSave.has('${1:key}')" },
-    { n:'GameSave.delete',   m:'save',      v:"GameSave.delete('${1:key}')" },
-    { n:'GameSave.setAll',   m:'save',      v:"GameSave.setAll({ ${1:key}: ${2:value} })" },
-    { n:'GameSave.getAll',   m:'save',      v:'GameSave.getAll()' },
-    { n:'GameSave.increment',m:'save',      v:"GameSave.increment('${1:key}', ${2:1})" },
-    { n:'GameSave.clear',    m:'save',      v:'GameSave.clear()' },
-    { n:'GameSave.slot',     m:'save',      v:"GameSave.slot('${1:slotName}')" },
-    { n:'GameSave.listSlots',m:'save',      v:'GameSave.listSlots()' },
+    { n:'GameSave',          m:'save',      v:'GameSave',                                      d:'Persistent save system — survives page close & refresh' },
+    { n:'GameSave.set',      m:'save',      v:"GameSave.set('${1:key}', ${2:value})",          d:'Save a value permanently. GameSave.set("score", 100)' },
+    { n:'GameSave.get',      m:'save',      v:"GameSave.get('${1:key}', ${2:defaultValue})",   d:'Load a saved value. Second arg = default if not found yet' },
+    { n:'GameSave.has',      m:'save',      v:"GameSave.has('${1:key}')",                      d:'Returns true if this key has been saved before' },
+    { n:'GameSave.delete',   m:'save',      v:"GameSave.delete('${1:key}')",                   d:'Remove one saved key' },
+    { n:'GameSave.setAll',   m:'save',      v:"GameSave.setAll({ ${1:key}: ${2:value} })",     d:'Save multiple keys at once from a plain object' },
+    { n:'GameSave.getAll',   m:'save',      v:'GameSave.getAll()',                              d:'Get all saved data as a plain object' },
+    { n:'GameSave.increment',m:'save',      v:"GameSave.increment('${1:key}', ${2:1})",        d:'Add to a numeric key (creates at 0 if missing). Returns new value' },
+    { n:'GameSave.clear',    m:'save',      v:'GameSave.clear()',                               d:'Wipe ALL saved data in the current slot' },
+    { n:'GameSave.slot',     m:'save',      v:"GameSave.slot('${1:slotName}')",                d:'Switch to a named save slot. GameSave.slot("file2").set("level",3)' },
+    { n:'GameSave.listSlots',m:'save',      v:'GameSave.listSlots()',                           d:'Returns array of all slot names that have data' },
     { n:'store.set',         m:'vars',      v:"store.set('${1:key}', ${2:value})" },
     { n:'store.get',         m:'vars',      v:"store.get('${1:key}', ${2:default})" },
     // Time
@@ -549,7 +549,7 @@ const COMPLETIONS = [
     { n:'t.destroy',          m:'text',     v:'${1:t}.destroy()' },
     // ── Text object (placed in editor) via find() ──────────────────────────
     { n:'setText (obj)',      m:'text',     v:"find('${1:TextLabel}').setText('${2:hello}')" },
-].map(c => ({ caption:c.n, value:c.v, meta:c.m, score:950 }));
+].map(c => ({ caption:c.n, value:c.v, meta:c.m, score:950, docText: c.d || '' }));
 
 
 // ── Script Editor (Ace-powered) ───────────────────────────────
@@ -1116,6 +1116,7 @@ function _sidebarHTML() {
         'Game Helpers':        'wrench',
         'Shooting (Gun)':      'target',
         'Math':                'calculator',
+        'Game Save':           'save',
         'Debug':               'bug',
     };
 
@@ -1567,6 +1568,21 @@ function _sidebarHTML() {
             'abs / sign / floor / ceil / round',
             'sin / cos / tan / atan2 / sqrt / pow',
             'max / min / PI / toRad / toDeg',
+        ]],
+        ['Game Save', [
+            '// Survives page close/refresh — stores player progress',
+            'GameSave.set("score", 100)',
+            'GameSave.get("score", 0)       // 0 = default if missing',
+            'GameSave.has("unlocked")       // → true / false',
+            'GameSave.delete("key")',
+            'GameSave.increment("coins", 1) // add 1, returns new value',
+            'GameSave.setAll({ score:0, level:1 })',
+            'GameSave.getAll()              // → plain object',
+            'GameSave.clear()               // wipe entire slot',
+            '// Multiple save files:',
+            'GameSave.slot("file2").set("level", 3)',
+            'GameSave.slot("file2").get("level", 1)',
+            'GameSave.listSlots()           // → ["default","file2"]',
         ]],
         ['Debug', [
             'log(...)',
