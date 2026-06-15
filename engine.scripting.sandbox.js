@@ -145,6 +145,8 @@ function _buildSandbox(obj, instRef) {
         // Scene references for prelude helpers (drawText etc) that can't access `state` directly
         get _sc()          { return state.sceneContainer; },
         get _gameObjects() { return state.gameObjects; },
+        // drawText cache — shared between the prelude's drawText() and the sandbox closure
+        get _drawTextCache() { return _drawTextCache; },
         // ANY-key helpers
         _anyKeyDown()     { return _keys.size > 0; },
         _anyKeyJustDown() { return _keysJustDown.size > 0; },

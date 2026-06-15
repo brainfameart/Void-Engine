@@ -1001,22 +1001,26 @@ function drawText(text, x, y, styleOpts = {}) {
     // Runtime-only text creation. Uses api._sc / api._gameObjects instead of bare
     // 'state' — the state module export is not accessible inside AsyncFunction sandbox.
     const sc = api._sc;
-    if (!sc) { warn('drawText: scene not ready'); return { text: '', setText() {}, setTextStyle() {}, destroy() {} }; }
+    if (!sc) { warn('drawText: scene not ready'); return { text: '', setText: function(v){}, setTextStyle: function(o){}, destroy: function(){} }; }
+
+    // _drawTextCache lives in the sandbox closure and is exposed via api._drawTextCache
+    // so that this prelude function (compiled into an AsyncFunction) can reach it.
+    const _cache = api._drawTextCache;
 
     // ── Deduplication: same id or same x/y reuses the existing node ──────────
     // This prevents duplicate text nodes when drawText is called every frame.
     const cacheKey = styleOpts.id != null
         ? String(styleOpts.id)
-        : \`_auto_\${x}_\${y}\`;
-    if (_drawTextCache.has(cacheKey)) {
-        const existing = _drawTextCache.get(cacheKey);
+        : ('_auto_' + x + '_' + y);
+    if (_cache.has(cacheKey)) {
+        const existing = _cache.get(cacheKey);
         if (!existing._ref || existing._ref._markedForDestroy || !existing._ref._pixiText) {
-            _drawTextCache.delete(cacheKey); // stale — fall through to recreate
+            _cache.delete(cacheKey); // stale — fall through to recreate
         } else {
             // Already exists — just update text content, return same proxy
-            existing.text = String(text);
-            existing.x = x ?? 0;
-            existing.y = y ?? 0;
+            existing.setText(String(text));
+            existing.setX(x ?? 0);
+            existing.setY(y ?? 0);
             return existing;
         }
     }
@@ -1076,56 +1080,79 @@ function drawText(text, x, y, styleOpts = {}) {
     // Re-apply Z-order so runtime text with high unityZ appears on top
     try {
         const objs = api._gameObjects;
-        const sorted = objs.slice().sort((a, b) => (a.unityZ || 0) - (b.unityZ || 0));
-        sorted.forEach((obj, i) => {
+        const sorted = objs.slice().sort(function(a, b) { return (a.unityZ || 0) - (b.unityZ || 0); });
+        sorted.forEach(function(o, i) {
             try {
-                const cur = sc.getChildIndex(obj);
+                const cur = sc.getChildIndex(o);
                 const tgt = Math.min(i, sc.children.length - 1);
-                if (cur !== tgt) sc.setChildIndex(obj, tgt);
+                if (cur !== tgt) sc.setChildIndex(o, tgt);
             } catch(_) {}
         });
     } catch(_) {}
 
-    const proxy = {
-        _ref: container,
-        get text()  { return this._ref._pixiText?.text ?? ''; },
-        set text(v) {
-            if (!this._ref?._pixiText) return;
-            this._ref.textContent    = String(v);
-            this._ref._pixiText.text = String(v);
+    // Build proxy WITHOUT get/set shorthand — those keywords cause "Unexpected identifier 'set'"
+    // when the prelude is re-compiled inside the sandboxed iframe's AsyncFunction constructor.
+    // Object.defineProperty is universally supported and avoids the parse issue entirely.
+    const proxy = { _ref: container };
+
+    Object.defineProperty(proxy, 'text', {
+        get: function() { return proxy._ref._pixiText ? proxy._ref._pixiText.text : ''; },
+        set: function(v) {
+            if (!proxy._ref || !proxy._ref._pixiText) return;
+            proxy._ref.textContent    = String(v);
+            proxy._ref._pixiText.text = String(v);
         },
-        setText(v) { this.text = v; },
-        setTextStyle(opts) {
-            if (!this._ref?._pixiText) return;
-            const s = this._ref._pixiText.style;
-            if (opts.fontSize        != null) s.fontSize        = opts.fontSize;
-            if (opts.fill            != null) s.fill            = opts.fill;
-            if (opts.fontFamily      != null) s.fontFamily      = opts.fontFamily;
-            if (opts.strokeThickness != null) s.strokeThickness = opts.strokeThickness;
-            if (opts.stroke          != null) s.stroke          = opts.stroke;
-            if (opts.bold            != null) s.fontWeight      = opts.bold ? 'bold' : 'normal';
-            if (opts.italic          != null) s.fontStyle       = opts.italic ? 'italic' : 'normal';
-            // Keep container.textStyle in sync so inspector/restore can read it
-            if (this._ref.textStyle) {
-                if (opts.fontSize        != null) this._ref.textStyle.fontSize        = s.fontSize;
-                if (opts.fill            != null) this._ref.textStyle.fill            = s.fill;
-                if (opts.fontFamily      != null) this._ref.textStyle.fontFamily      = s.fontFamily;
-                if (opts.strokeThickness != null) this._ref.textStyle.strokeThickness = s.strokeThickness;
-                if (opts.stroke          != null) this._ref.textStyle.stroke          = s.stroke;
-                if (opts.bold            != null) this._ref.textStyle.fontWeight      = s.fontWeight;
-                if (opts.italic          != null) this._ref.textStyle.fontStyle       = s.fontStyle;
-            }
-        },
-        get visible()  { return this._ref?.visible ?? true; },
-        set visible(v) { if (this._ref) this._ref.visible = !!v; },
-        get x()        { return this._ref ? this._ref.x / 100 : 0; },
-        set x(v)       { if (this._ref) this._ref.x = v * 100; },
-        get y()        { return this._ref ? -this._ref.y / 100 : 0; },
-        set y(v)       { if (this._ref) this._ref.y = -v * 100; },
-        destroy()      { if (this._ref) { this._ref._markedForDestroy = true; _drawTextCache.delete(cacheKey); } },
+        enumerable: true, configurable: true,
+    });
+    Object.defineProperty(proxy, 'visible', {
+        get: function() { return proxy._ref ? proxy._ref.visible : true; },
+        set: function(v) { if (proxy._ref) proxy._ref.visible = !!v; },
+        enumerable: true, configurable: true,
+    });
+    Object.defineProperty(proxy, 'x', {
+        get: function() { return proxy._ref ? proxy._ref.x / 100 : 0; },
+        set: function(v) { if (proxy._ref) proxy._ref.x = v * 100; },
+        enumerable: true, configurable: true,
+    });
+    Object.defineProperty(proxy, 'y', {
+        get: function() { return proxy._ref ? -proxy._ref.y / 100 : 0; },
+        set: function(v) { if (proxy._ref) proxy._ref.y = -(v * 100); },
+        enumerable: true, configurable: true,
+    });
+
+    proxy.setText = function(v) { proxy.text = v; };
+    proxy.setX    = function(v) { proxy.x    = v; };
+    proxy.setY    = function(v) { proxy.y    = v; };
+    proxy.setTextStyle = function(opts) {
+        if (!proxy._ref || !proxy._ref._pixiText) return;
+        const s = proxy._ref._pixiText.style;
+        if (opts.fontSize        != null) s.fontSize        = opts.fontSize;
+        if (opts.fill            != null) s.fill            = opts.fill;
+        if (opts.fontFamily      != null) s.fontFamily      = opts.fontFamily;
+        if (opts.strokeThickness != null) s.strokeThickness = opts.strokeThickness;
+        if (opts.stroke          != null) s.stroke          = opts.stroke;
+        if (opts.bold            != null) s.fontWeight      = opts.bold ? 'bold' : 'normal';
+        if (opts.italic          != null) s.fontStyle       = opts.italic ? 'italic' : 'normal';
+        // Keep container.textStyle in sync so inspector/restore can read it
+        if (proxy._ref.textStyle) {
+            if (opts.fontSize        != null) proxy._ref.textStyle.fontSize        = s.fontSize;
+            if (opts.fill            != null) proxy._ref.textStyle.fill            = s.fill;
+            if (opts.fontFamily      != null) proxy._ref.textStyle.fontFamily      = s.fontFamily;
+            if (opts.strokeThickness != null) proxy._ref.textStyle.strokeThickness = s.strokeThickness;
+            if (opts.stroke          != null) proxy._ref.textStyle.stroke          = s.stroke;
+            if (opts.bold            != null) proxy._ref.textStyle.fontWeight      = s.fontWeight;
+            if (opts.italic          != null) proxy._ref.textStyle.fontStyle       = s.fontStyle;
+        }
     };
+    proxy.destroy = function() {
+        if (proxy._ref) {
+            proxy._ref._markedForDestroy = true;
+            _cache.delete(cacheKey);
+        }
+    };
+
     // Store in cache for deduplication on subsequent calls
-    _drawTextCache.set(cacheKey, proxy);
+    _cache.set(cacheKey, proxy);
     return proxy;
 }
 
