@@ -483,23 +483,6 @@ function sendMessage(tagOrProxy, msg, data) {
     }
 }
 /**
- * Alias of sendMessage(tag, ...) — use sendMessage() instead.
- * @deprecated Use sendMessage(tag, msg, data)
- */
-function sendMessageToTag(tag, msg, data) { api.sendMessage(tag, msg, data); }
-/**
- * Send a message to ALL objects in the scene.
- * Alias of broadcastAll() — prefer broadcastAll() for clarity.
- *   broadcastMessage("gameOver")
- * @deprecated Use broadcastAll(msg, data)
- */
-function broadcastMessage(msg, data) { api.broadcastMessage(msg, data); }
-/**
- * Alias of sendMessage(tag, ...) — use sendMessage() instead.
- * @deprecated Use sendMessage(tag, msg, data)
- */
-function broadcast(tag, msg, data)        { api.broadcast(tag, msg, data); }
-/**
  * Send to all objects in a specific group.
  *   broadcastGroup("wave1", "explode")
  */
@@ -1208,10 +1191,6 @@ function onKeyDown(key, fn) { api.onKeyDown(key, fn); }
 function onKeyUp(key, fn)   { api.onKeyUp(key, fn); }
 
 // ── Physics helpers ────────────────────────────────────────────
-/** Actual physics body velocity X (world units/sec). Works for kinematic and dynamic. */
-function getPhysicsVelX()   { return api.getPhysicsVelX(); }
-/** Actual physics body velocity Y (world units/sec, positive = up). Works for kinematic and dynamic. */
-function getPhysicsVelY()   { return api.getPhysicsVelY(); }
 /** Change this object's gravity scale (0 = floats, 2 = 2× gravity). Dynamic bodies only. */
 function setGravityScale(n) { api.setGravityScale(n); }
 // isOnGround/isOnCeiling/isOnWall defined above in Physics section
@@ -1280,12 +1259,6 @@ var PI = Math.PI;
 // One-liners that replace 10+ lines of boilerplate so your
 // entire Flappy Bird or enemy-spawner fits in 20 lines.
 // ═══════════════════════════════════════════════════════════════
-
-/**
- * Instantly destroy this object and remove it from the scene.
- * Same as api.destroy() but shorter.
- */
-function destroy() { api.destroySelf(); }
 
 /**
  * Spawn a copy of any object in your scene by its name.
@@ -1719,8 +1692,6 @@ function setState(name)  { api.setState(name); }
 function getState()      { return api.getState(); }
 
 // ── CLONE IDENTITY ────────────────────────────────────────
-/** True if this object was spawned as a clone (not the original). */
-function isClone()       { return api.isClone; }
 /** Returns this clone's numeric ID (0 for originals). */
 function getCloneId()    { return api._ref?._cloneId ?? 0; }
 
