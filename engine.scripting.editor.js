@@ -201,7 +201,7 @@ const COMPLETIONS = [
     { n:'onTap',             m:'mobile',    v:"onTap(() => {\n  \n});", d:'Fires on a touch tap (mobile).' },
     { n:'onPinch',           m:'mobile',    v:"onPinch((scale) => {\n  \n});", d:'Fires on a two-finger pinch. scale > 1 = expand, < 1 = shrink.' },
     // Virtual Joystick
-    { n:'createJoystick',    m:'joystick',  v:"createJoystick({ fixed: true, x: 150, y: 150, d:'Create a virtual on-screen joystick. Returns an object with .axisH and .axisV.'})" },
+    { n:'createJoystick',    m:'joystick',  v:"createJoystick({ fixed: true, x: 150, y: 150 })", d:'Create a virtual on-screen joystick. Returns an object with .axisH and .axisV.' },
     { n:'destroyAllJoysticks',m:'joystick', v:'destroyAllJoysticks()', d:'Remove all virtual joysticks from the screen.'},
     // Animation
     { n:'playAnimation',     m:'anim',      v:"playAnimation('${1:name}')", d:'Play a named animation clip defined in the Animation editor.' },
@@ -261,8 +261,8 @@ const COMPLETIONS = [
     { n:'GameSave.clear',    m:'save',      v:'GameSave.clear()',                               d:'Wipe ALL saved data in the current slot' },
     { n:'GameSave.slot',     m:'save',      v:"GameSave.slot('${1:slotName}')", d:'Switch to a named save slot: GameSave.slot("file2").set("level", 3).',                d:'Switch to a named save slot. GameSave.slot("file2").set("level",3)' },
     { n:'GameSave.listSlots',m:'save',      v:'GameSave.listSlots()',                           d:'Returns array of all slot names that have data' },
-    { n:'store.set',         m:'vars',      v:"store.set('${1:key, d:'Save a value into this object\'s local persistent store.'}', ${2:value})" },
-    { n:'store.get',         m:'vars',      v:"store.get('${1:key, d:'Load a value from this object\'s local store. Second arg = default.'}', ${2:default})" },
+    { n:'store.set',         m:'vars',      v:"store.set('${1:key}', ${2:value})", d:"Save a value into this object's local persistent store." },
+    { n:'store.get',         m:'vars',      v:"store.get('${1:key}', ${2:default})", d:"Load a value from this object's local store. Second arg = default." },
     // Time
     { n:'getTime',           m:'time',      v:'getTime()', d:'Returns seconds elapsed since play mode started.'},
     // Math
@@ -314,7 +314,7 @@ const COMPLETIONS = [
     { n:'setCollisionCategory',m:'physics', v:'setCollisionCategory(${1:1})', d:'Set which collision category this body belongs to (bitmask).' },
     { n:'setCollisionMask',  m:'physics',   v:'setCollisionMask(${1:-1})', d:'Set which categories this body collides with (bitmask, -1 = all).' },
     // Tint
-    { n:'setTint',           m:'tint',     v:"setTint('${1:#ffffff, d:'Tint this object\'s sprite with a hex color string like "#ff0000".'}')" },
+    { n:'setTint',           m:'tint',     v:"setTint('${1:#ffffff}')", d:'Tint this object\'s sprite with a hex color string like "#ff0000".' },
     { n:'getTint',           m:'tint',     v:'getTint()', d:'Returns the current tint as a hex string.'},
     // Distance
     { n:'distanceTo',        m:'distance', v:"distanceTo('${1:tag}')", d:'Distance in world units from this object to a tag, position, or proxy.' },
