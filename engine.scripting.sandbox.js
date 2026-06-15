@@ -616,74 +616,264 @@ function _buildSandbox(obj, instRef) {
          * GameSave  — store and retrieve player progress that
          * survives page refresh, browser close, and re-open.
          *
+         * Small values (strings, numbers, objects) → localStorage (sync, instant).
+         * Large values (>= 128 KB serialised) or binary (ArrayBuffer / Blob)
+         * → IndexedDB automatically (async, no size limit).
+         * If localStorage is full it also falls back to IDB automatically.
+         * You never need to think about which backend is used.
+         *
          * All data is namespaced to a slot so multiple save
          * files can coexist (slot defaults to "default").
          *
-         * Quick reference:
+         * Sync quick reference (small data — returns value directly):
          *   GameSave.set("score", 42)
          *   GameSave.get("score", 0)       // 0 = default if not found
          *   GameSave.has("score")          // → true / false
          *   GameSave.delete("score")
          *   GameSave.setAll({ score:42, level:3 })
-         *   GameSave.getAll()              // → { score:42, level:3 }
-         *   GameSave.clear()               // wipe entire slot
+         *   GameSave.getAll()              // → plain object (LS keys only)
+         *   GameSave.increment("score", 5) // → new value
+         *   GameSave.clear()               // wipe entire slot (both LS + IDB)
          *   GameSave.slot("file2").set("score", 0)  // named slots
+         *
+         * Async (needed for large / binary data — returns a Promise):
+         *   await GameSave.setBig("mapData", hugeArrayBuffer)
+         *   const buf = await GameSave.getBig("mapData", null)
+         *   await GameSave.deleteBig("mapData")
+         *   const keys = await GameSave.listBigKeys()
          */
         GameSave: (() => {
-            const _LS_PREFIX = '__zgsave__';
-            function _load(slot) {
+            const _LS_PREFIX  = '__zgsave__';
+            const _IDB_DB     = 'ZengineSaveDB';
+            const _IDB_STORE  = 'saves';
+            // Values larger than this threshold go to IDB automatically
+            const _BIG_BYTES  = 128 * 1024; // 128 KB
+
+            // ── IndexedDB helpers (shared across all slots) ───
+            let _idb = null;
+            function _openSaveDB() {
+                if (_idb) return Promise.resolve(_idb);
+                return new Promise((resolve) => {
+                    const req = indexedDB.open(_IDB_DB, 1);
+                    req.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(_IDB_STORE)) {
+                            db.createObjectStore(_IDB_STORE);
+                        }
+                    };
+                    req.onsuccess = (e) => { _idb = e.target.result; resolve(_idb); };
+                    req.onerror   = ()  => { resolve(null); };
+                });
+            }
+            function _idbPut(key, value) {
+                return _openSaveDB().then(db => new Promise((resolve) => {
+                    if (!db) { resolve(false); return; }
+                    try {
+                        const tx  = db.transaction(_IDB_STORE, 'readwrite');
+                        const req = tx.objectStore(_IDB_STORE).put(value, key);
+                        req.onsuccess = () => resolve(true);
+                        req.onerror   = () => resolve(false);
+                    } catch { resolve(false); }
+                }));
+            }
+            function _idbGet(key) {
+                return _openSaveDB().then(db => new Promise((resolve) => {
+                    if (!db) { resolve(null); return; }
+                    try {
+                        const tx  = db.transaction(_IDB_STORE, 'readonly');
+                        const req = tx.objectStore(_IDB_STORE).get(key);
+                        req.onsuccess = (e) => resolve(e.target.result ?? null);
+                        req.onerror   = () => resolve(null);
+                    } catch { resolve(null); }
+                }));
+            }
+            function _idbDelete(key) {
+                return _openSaveDB().then(db => new Promise((resolve) => {
+                    if (!db) { resolve(false); return; }
+                    try {
+                        const tx  = db.transaction(_IDB_STORE, 'readwrite');
+                        const req = tx.objectStore(_IDB_STORE).delete(key);
+                        req.onsuccess = () => resolve(true);
+                        req.onerror   = () => resolve(false);
+                    } catch { resolve(false); }
+                }));
+            }
+            function _idbAllKeys(prefix) {
+                return _openSaveDB().then(db => new Promise((resolve) => {
+                    if (!db) { resolve([]); return; }
+                    try {
+                        const tx  = db.transaction(_IDB_STORE, 'readonly');
+                        const req = tx.objectStore(_IDB_STORE).getAllKeys();
+                        req.onsuccess = (e) => resolve(
+                            (e.target.result || []).filter(k => k.startsWith(prefix))
+                        );
+                        req.onerror = () => resolve([]);
+                    } catch { resolve([]); }
+                }));
+            }
+
+            // ── LS helpers ────────────────────────────────────
+            function _lsLoad(slot) {
                 try { return JSON.parse(localStorage.getItem(_LS_PREFIX + slot) || 'null') || {}; }
                 catch { return {}; }
             }
-            function _save(slot, data) {
-                try { localStorage.setItem(_LS_PREFIX + slot, JSON.stringify(data)); }
-                catch (e) { _logConsole('GameSave: storage full — ' + e.message, '#f87171'); }
+            function _lsSave(slot, data) {
+                try {
+                    localStorage.setItem(_LS_PREFIX + slot, JSON.stringify(data));
+                    return true;
+                } catch { return false; }
             }
+
+            // ── Decide if a value is "big" ────────────────────
+            function _isBig(value) {
+                if (value instanceof ArrayBuffer) return true;
+                if (value instanceof Blob)        return true;
+                if (typeof value === 'string' && value.length >= _BIG_BYTES) return true;
+                if (typeof value === 'object' && value !== null) {
+                    try {
+                        return JSON.stringify(value).length >= _BIG_BYTES;
+                    } catch { return true; }
+                }
+                return false;
+            }
+
+            // ── IDB key format: "slot::key" ───────────────────
+            function _idbKey(slot, key) { return slot + '::' + key; }
+
+            // ── Slot factory ──────────────────────────────────
             function _makeSlot(slotName) {
                 return {
-                    /** Save a single key. Value can be any JSON-serialisable type. */
+                    /**
+                     * Save a key. Small values save synchronously to localStorage.
+                     * Large values (>= 128 KB) or binary automatically use IDB
+                     * and return a Promise — await it if you need to know when done.
+                     * If localStorage is full, also falls back to IDB automatically.
+                     */
                     set(key, value) {
-                        const d = _load(slotName);
+                        if (_isBig(value)) {
+                            // Big / binary — go straight to IDB
+                            return _idbPut(_idbKey(slotName, key), value).then(ok => {
+                                if (!ok) _logConsole(`GameSave.set("${key}"): IDB write failed`, '#f87171');
+                            });
+                        }
+                        // Small — try localStorage first
+                        const d = _lsLoad(slotName);
                         d[key] = value;
-                        _save(slotName, d);
+                        const ok = _lsSave(slotName, d);
+                        if (!ok) {
+                            // LS full — spill to IDB
+                            _logConsole(`GameSave: localStorage full, saving "${key}" to IDB`, '#facc15');
+                            return _idbPut(_idbKey(slotName, key), value).then(iok => {
+                                if (!iok) _logConsole(`GameSave.set("${key}"): IDB fallback also failed`, '#f87171');
+                            });
+                        }
                     },
-                    /** Read a key. Returns defaultValue if not found. */
+
+                    /**
+                     * Read a key synchronously from localStorage.
+                     * If the key was stored in IDB (big/binary/spill), use getBig() instead.
+                     */
                     get(key, defaultValue = null) {
-                        const d = _load(slotName);
+                        const d = _lsLoad(slotName);
                         return Object.prototype.hasOwnProperty.call(d, key) ? d[key] : defaultValue;
                     },
-                    /** Returns true if the key exists in this slot. */
+
+                    /**
+                     * Async get — checks IDB first, then localStorage.
+                     * Use this when you don't know which backend was used,
+                     * or when dealing with large / binary values.
+                     *   const data = await GameSave.getAny("key", null)
+                     */
+                    async getAny(key, defaultValue = null) {
+                        const idbVal = await _idbGet(_idbKey(slotName, key));
+                        if (idbVal !== null) return idbVal;
+                        const d = _lsLoad(slotName);
+                        return Object.prototype.hasOwnProperty.call(d, key) ? d[key] : defaultValue;
+                    },
+
+                    /**
+                     * Async set for large / binary values — always writes to IDB.
+                     * Equivalent to set() but always async and always IDB.
+                     *   await GameSave.setBig("screenshot", arrayBuffer)
+                     */
+                    async setBig(key, value) {
+                        const ok = await _idbPut(_idbKey(slotName, key), value);
+                        if (!ok) _logConsole(`GameSave.setBig("${key}"): IDB write failed`, '#f87171');
+                        return ok;
+                    },
+
+                    /**
+                     * Async get for large / binary values from IDB.
+                     *   const buf = await GameSave.getBig("screenshot", null)
+                     */
+                    async getBig(key, defaultValue = null) {
+                        const v = await _idbGet(_idbKey(slotName, key));
+                        return v !== null ? v : defaultValue;
+                    },
+
+                    /**
+                     * Async delete a large / binary value from IDB.
+                     */
+                    async deleteBig(key) {
+                        return _idbDelete(_idbKey(slotName, key));
+                    },
+
+                    /**
+                     * List all keys stored in IDB for this slot.
+                     *   const keys = await GameSave.listBigKeys()
+                     */
+                    async listBigKeys() {
+                        const prefix = slotName + '::';
+                        const keys = await _idbAllKeys(prefix);
+                        return keys.map(k => k.slice(prefix.length));
+                    },
+
+                    /** Returns true if the key exists in localStorage. */
                     has(key) {
-                        return Object.prototype.hasOwnProperty.call(_load(slotName), key);
+                        return Object.prototype.hasOwnProperty.call(_lsLoad(slotName), key);
                     },
-                    /** Remove a single key. */
+
+                    /** Remove a single key from localStorage. */
                     delete(key) {
-                        const d = _load(slotName);
+                        const d = _lsLoad(slotName);
                         delete d[key];
-                        _save(slotName, d);
+                        _lsSave(slotName, d);
                     },
-                    /** Save multiple keys at once from a plain object. */
+
+                    /** Save multiple small keys at once from a plain object. */
                     setAll(obj) {
-                        const d = _load(slotName);
+                        const d = _lsLoad(slotName);
                         Object.assign(d, obj);
-                        _save(slotName, d);
+                        const ok = _lsSave(slotName, d);
+                        if (!ok) _logConsole('GameSave.setAll: localStorage full — some keys not saved', '#f87171');
                     },
-                    /** Return every key/value stored in this slot as a plain object. */
-                    getAll() { return { ..._load(slotName) }; },
-                    /** Increment a numeric key by amount (default 1). Creates it at 0 first if missing. */
+
+                    /** Return every small (localStorage) key/value in this slot. */
+                    getAll() { return { ..._lsLoad(slotName) }; },
+
+                    /** Increment a numeric key by amount (default 1). */
                     increment(key, amount = 1) {
-                        const d = _load(slotName);
+                        const d = _lsLoad(slotName);
                         d[key] = (typeof d[key] === 'number' ? d[key] : 0) + amount;
-                        _save(slotName, d);
+                        _lsSave(slotName, d);
                         return d[key];
                     },
-                    /** Wipe all data in this slot. */
-                    clear() { localStorage.removeItem(_LS_PREFIX + slotName); },
+
+                    /** Wipe all data in this slot — both localStorage and IDB. */
+                    async clear() {
+                        localStorage.removeItem(_LS_PREFIX + slotName);
+                        const prefix = slotName + '::';
+                        const keys = await _idbAllKeys(prefix);
+                        await Promise.all(keys.map(k => _idbDelete(k)));
+                    },
+
                     /** Switch to a different named slot. */
                     slot(name) { return _makeSlot(String(name)); },
+
                     /** The slot name this handle points to. */
                     get slotName() { return slotName; },
-                    /** List all slot names that have data. */
+
+                    /** List all slot names that have data in localStorage. */
                     listSlots() {
                         const slots = [];
                         for (let i = 0; i < localStorage.length; i++) {
