@@ -575,6 +575,23 @@ function getCameraX()                      { return api.camera.x; }
 function getCameraY()                      { return api.camera.y; }
 /** Shake the camera */
 function cameraShake(amplitude, duration)  { api.camera.shake(amplitude, duration); }
+/**
+ * Set camera Field of View (simulated via zoom).
+ * Lower FOV = zoomed in (telephoto). Higher FOV = zoomed out (wide angle).
+ * Default is 90. Range: 10–170.
+ *   setCameraFOV(60)   // zoom in
+ *   setCameraFOV(120)  // zoom out
+ *   setCameraFOV(90)   // default
+ */
+function setCameraFOV(degrees)             { api.camera.fov = degrees; }
+/** Get the current camera FOV in degrees (default 90). */
+function getCameraFOV()                    { return api.camera.fov; }
+/**
+ * Smoothly tween the camera FOV to a new value over time.
+ *   cameraZoomTo(60, 1.0)   // zoom to FOV 60 over 1 second
+ *   cameraZoomTo(90, 0.5)   // restore default over 0.5 seconds
+ */
+function cameraZoomTo(targetFov, duration) { api.camera.zoomTo(targetFov, duration); }
 
 // ── Animation ─────────────────────────────────────────────────
 function playAnimation(name)  { api.playAnimation(name); }
@@ -2472,6 +2489,11 @@ function _applyDragThisFrame(dt) {
         draggedObj.x =  wx * 100;
         draggedObj.y = -wy * 100;
         if (draggedObj._vel) { draggedObj._vel.x = 0; draggedObj._vel.y = 0; }
+    }
+
+    // ── Fire onDragFrame callback (every frame while dragging) ──
+    if (_activeDragOpts.onDragFrame) {
+        try { _activeDragOpts.onDragFrame(draggedObj.x / 100, -draggedObj.y / 100); } catch(_) {}
     }
 }
 

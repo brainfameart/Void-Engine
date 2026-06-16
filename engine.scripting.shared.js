@@ -449,6 +449,59 @@ export const _camera = {
         _cameraShake.duration  = duration;
         _cameraShake.elapsed   = 0;
     },
+    /**
+     * Camera FOV — simulated via zoom (scale).
+     * A smaller FOV zooms IN (narrower view, objects appear larger).
+     * A larger FOV zooms OUT (wider view, objects appear smaller).
+     * Default FOV is 90 degrees (matches the default 1280×720 view).
+     *
+     *   camera.fov = 60    // zoom in (telephoto feel)
+     *   camera.fov = 120   // zoom out (wide angle feel)
+     *   camera.fov         // get current FOV
+     */
+    get fov() {
+        if (!state.sceneContainer) return 90;
+        // Base scale = fit scale for the current game dimensions
+        const sw = window.innerWidth;
+        const sh = window.innerHeight;
+        const gw = state.sceneSettings?.gameWidth  ?? 1280;
+        const gh = state.sceneSettings?.gameHeight ?? 720;
+        const baseScale = Math.min(sw / gw, sh / gh);
+        const curScale  = state.sceneContainer.scale.x;
+        // FOV 90 = base scale; scaling relationship: fov ∝ 1/scale
+        return 90 * (baseScale / curScale);
+    },
+    set fov(degrees) {
+        if (!state.sceneContainer) return;
+        const fov = Math.max(10, Math.min(170, degrees));
+        const sw = window.innerWidth;
+        const sh = window.innerHeight;
+        const gw = state.sceneSettings?.gameWidth  ?? 1280;
+        const gh = state.sceneSettings?.gameHeight ?? 720;
+        const baseScale = Math.min(sw / gw, sh / gh);
+        // newScale = baseScale * (90 / fov)
+        const newScale = baseScale * (90 / fov);
+        state.sceneContainer.scale.set(newScale);
+        import('./engine.playmode.js').then(m => m.updateSceneMask?.());
+    },
+    /**
+     * Smoothly tween the camera FOV over time.
+     *   camera.zoomTo(60, 1.0)   // zoom to FOV 60 over 1 second
+     *   camera.zoomTo(90, 0.5)   // restore default over 0.5 seconds
+     */
+    zoomTo(targetFov, duration = 0.5) {
+        const startFov  = this.fov;
+        const startTime = performance.now() / 1000;
+        const cam = this;
+        const tick = () => {
+            if (!state.isPlaying) return;
+            const t = Math.min(1, (performance.now() / 1000 - startTime) / Math.max(0.001, duration));
+            const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // ease-in-out
+            cam.fov = startFov + (targetFov - startFov) * eased;
+            if (t < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    },
 };
 export function _updateCamera(dt) {
     if (!state.sceneContainer || !state.isPlaying) return;

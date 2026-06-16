@@ -168,8 +168,26 @@ function _buildSandbox(obj, instRef) {
         /** This object's rotation in degrees */
         get rotation()   { return -(obj.rotation * 180 / Math.PI); },
         set rotation(v)  {
-            obj.rotation = -(v * Math.PI / 180);
-            if (obj.spriteGraphic) obj.spriteGraphic.rotation = obj.rotation;
+            const rad = -(v * Math.PI / 180);
+            obj.rotation = rad;
+            if (obj.spriteGraphic) obj.spriteGraphic.rotation = rad;
+            // Sync the physics body so the collision shape rotates with the sprite.
+            // Works for both dynamic and kinematic bodies.
+            if (obj._physicsBody && window.planck) {
+                const body = obj._physicsBody;
+                const off  = body._zenOffset || { x: 0, y: 0 };
+                const cosR = Math.cos(rad);
+                const sinR = Math.sin(rad);
+                const pos  = body.getPosition();
+                body.setTransform(
+                    window.planck.Vec2(
+                        obj.x + off.x * cosR - off.y * sinR,
+                        obj.y + off.x * sinR + off.y * cosR
+                    ),
+                    rad
+                );
+                body.setAwake(true);
+            }
         },
         get scaleX()     { return obj.scale?.x ?? 1; },
         set scaleX(v)    {
@@ -603,8 +621,10 @@ function _buildSandbox(obj, instRef) {
         restartScene() {
             if (!state.isPlaying) return;
             const currentIdx = state.activeSceneIndex;
-            import('./engine.scenes.js').then(sm => sm.playModeGotoScene(currentIdx));
             _logConsole(`↺ Scene restarted: "${state.scenes[currentIdx]?.name}"`, '#4ade80');
+            // playModeGotoScene automatically falls back to _playSnapshot when
+            // the target scene has no saved snapshot (unsaved fresh scene).
+            import('./engine.scenes.js').then(sm => sm.playModeGotoScene(currentIdx));
         },
 
         // ── CAMERA ───────────────────────────────────────────
@@ -1934,17 +1954,20 @@ function _buildSandbox(obj, instRef) {
 
         // ── ONE-LINE DRAG ──────────────────────────────────────
         /**
-         * Make this object draggable with one line. The engine handles
-         * click/tap to grab, smooth follow, and release — you do nothing else.
+         * Make this object draggable with one line. Works on ALL body types
+         * (dynamic, kinematic, static, none). The engine handles click/tap to
+         * grab, smooth follow, and release — you do nothing else.
          *
          *   makeDraggable()
          *   makeDraggable({ smooth: 18, clamp: true, scale: 1.1,
+         *                   onDrag: (x, y) => { },
          *                   onDrop: (x, y) => { log("dropped at", x, y) } })
          *
          * Options (all optional):
-         *   smooth  — follow lag 0–30 (default 16, 0 = instant snap)
-         *   clamp   — keep inside game canvas (default false)
-         *   scale   — scale factor while held (default 1.08)
+         *   smooth       — follow lag 0–30 (default 16, 0 = instant snap)
+         *   clamp        — keep inside game canvas (default false)
+         *   scale        — scale factor while held (default 1.08)
+         *   onDrag(x, y) — called every frame while dragging with world pos
          *   onDrop(x, y) — called when released, receives world position
          */
         makeDraggable(opts = {}) {
@@ -1952,8 +1975,9 @@ function _buildSandbox(obj, instRef) {
             const clamp    = opts.clamp   ?? false;
             const scaleMul = opts.scale   ?? 1.08;
             const onDrop   = opts.onDrop  ?? null;
+            const onDragCb = opts.onDrag  ?? null;
             let   held     = false;
-            let   origSX   = 1, origSY = 1;
+            let   origSX   = 1, origSY   = 1;
 
             const release = () => {
                 if (!held) return;
@@ -1977,13 +2001,15 @@ function _buildSandbox(obj, instRef) {
                 obj.scale.x = origSX * scaleMul;
                 obj.scale.y = origSY * scaleMul;
                 _activeDragObj  = obj;
-                _activeDragOpts = { smooth, clampToGameBounds: clamp,
-                    onDrop: () => release()
+                _activeDragOpts = {
+                    smooth,
+                    clampToGameBounds: clamp,
+                    onDragFrame: onDragCb,
+                    onDrop: () => release(),
                 };
             };
 
             // Grab fires on MOUSEDOWN (pointer over the object) — NOT on click/up.
-            // instRef is the [instance] wrapper array — instRef[0] is the live ScriptInstance.
             const inst = instRef[0];
             if (inst) {
                 inst._onDragMouseDown = grab;
@@ -1993,7 +2019,7 @@ function _buildSandbox(obj, instRef) {
         },
         /**
          * Make this object (or another) follow the mouse/finger precisely.
-         * Call once — usually inside onMouseClick or when mouseJustDown().
+         * Works on ALL body types. Call once — usually inside onMouseClick or mouseJustDown().
          *
          *   dragObject()                      — drag THIS object
          *   dragObject(find("Crate"))         — drag a different object
@@ -2002,14 +2028,15 @@ function _buildSandbox(obj, instRef) {
          * Options:
          *   offsetX / offsetY   — world-unit offset from cursor centre (default 0)
          *   clampToGameBounds   — keep inside game canvas (default false)
-         *   onDrop(obj) fn      — called once when finger/mouse is released
+         *   onDrag(x, y)        — called every frame while dragging
+         *   onDrop(obj)         — called once when finger/mouse is released
          */
         dragObject(target, opts = {}) {
             const dragObj = (target && target._ref)              ? target._ref
                           : (target && target.x !== undefined)   ? target
                           : obj;
             _activeDragObj  = dragObj;
-            _activeDragOpts = opts || {};
+            _activeDragOpts = { ...(opts || {}), onDragFrame: opts.onDrag ?? null };
         },
         /** Stop dragging (calls onDrop if provided). */
         stopDrag() {
@@ -2026,20 +2053,24 @@ function _buildSandbox(obj, instRef) {
         // ── ONE-LINE DRAG-AND-THROW ───────────────────────────────
         /**
          * Make this object draggable AND throwable in one line.
-         * Works on kinematic and dynamic physics bodies (and plain objects).
+         * Works on ALL body types: dynamic, kinematic, static, none.
          * When released, the object keeps the velocity it was moving at.
+         * Visually distinct from makeDraggable — uses instant tracking (smooth:0)
+         * and applies physics velocity on release so it flies through the air.
          *
          *   makeThrowable()
          *   makeThrowable({ smooth: 0, speed: 1.4, maxSpeed: 20,
          *                   clamp: true, scale: 1.1,
+         *                   onDrag: (x, y) => { },
          *                   onThrow: (vx, vy) => { log("thrown!", vx, vy) } })
          *
          * Options (all optional):
-         *   smooth   — follow lag 0–30 (default 0 = instant, recommended for throw)
-         *   speed    — velocity multiplier applied at release (default 1)
-         *   maxSpeed — cap on throw speed in world units/sec (default none)
-         *   clamp    — keep inside game canvas while dragging (default false)
-         *   scale    — scale factor while held (default 1.08)
+         *   smooth        — follow lag 0–30 (default 0 = instant snap for throw feel)
+         *   speed         — velocity multiplier applied at release (default 1)
+         *   maxSpeed      — cap on throw speed in world units/sec (default none)
+         *   clamp         — keep inside game canvas while dragging (default false)
+         *   scale         — scale factor while held (default 1.08)
+         *   onDrag(x, y)  — called every frame while being dragged
          *   onThrow(vx, vy) — called on release with the throw velocity
          */
         makeThrowable(opts = {}) {
@@ -2047,6 +2078,7 @@ function _buildSandbox(obj, instRef) {
             const clamp    = opts.clamp   ?? false;
             const scaleMul = opts.scale   ?? 1.08;
             const onThrow  = opts.onThrow ?? null;
+            const onDragCb = opts.onDrag  ?? null;
             let   held     = false;
             let   origSX   = 1, origSY = 1;
 
@@ -2056,7 +2088,7 @@ function _buildSandbox(obj, instRef) {
                 obj.scale.x = origSX;
                 obj.scale.y = origSY;
                 if (_activeDragObj === obj) {
-                    // Snapshot velocity BEFORE clearing state so onThrow callback gets correct values
+                    // Snapshot velocity BEFORE clearing state so onThrow gets correct values
                     const speedMul = opts.speed ?? 1;
                     const capVx = _throwVelX * speedMul;
                     const capVy = _throwVelY * speedMul;
@@ -2087,12 +2119,12 @@ function _buildSandbox(obj, instRef) {
                 _activeDragOpts = {
                     smooth,
                     clampToGameBounds: clamp,
-                    throw:    true,
-                    speed:    opts.speed    ?? 1,
-                    maxSpeed: opts.maxSpeed ?? null,
+                    throw:       true,
+                    speed:       opts.speed    ?? 1,
+                    maxSpeed:    opts.maxSpeed ?? null,
                     _throwAlpha: 0.2,
-                    // onDrop fires from _onDragMouseUp.
-                    // It calls release() which applies throw then clears state.
+                    onDragFrame: onDragCb,
+                    // onDrop fires from _onDragMouseUp → release() → _applyThrowVelocity
                     // _onDragMouseUp will NOT double-apply because opts.onDrop is set.
                     onDrop: () => release(),
                 };
@@ -2109,7 +2141,7 @@ function _buildSandbox(obj, instRef) {
         /**
          * Low-level: start throw-dragging an object right now.
          * Like dragObject() but applies physics velocity on release.
-         * Call from onMouseClick or mouseJustDown().
+         * Works on ALL body types. Call from onMouseClick or mouseJustDown().
          *
          *   throwObject()                        — throw THIS object
          *   throwObject(find("Ball"))            — throw another object
@@ -2120,6 +2152,7 @@ function _buildSandbox(obj, instRef) {
          *   clampToGameBounds  — keep inside canvas while dragging (default false)
          *   speed              — velocity multiplier at release (default 1)
          *   maxSpeed           — cap in world units/sec (default none)
+         *   onDrag(x, y)       — called every frame while dragging
          *   onDrop(obj)        — called on release
          */
         throwObject(target, opts = {}) {
@@ -2132,8 +2165,9 @@ function _buildSandbox(obj, instRef) {
             _activeDragObj  = dragObj;
             _activeDragOpts = {
                 ...(opts || {}),
-                throw: true,
+                throw:       true,
                 _throwAlpha: 0.25,
+                onDragFrame: opts.onDrag ?? null,
             };
         },
 

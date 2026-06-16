@@ -72,6 +72,8 @@ export function stopPlayMode() {
     // Stop user scripts + clean up transitions/debug graphics
     import('./engine.scripting.js').then(m => m.stopScripts());
     import('./engine.transitions.js').then(m => m.cleanupTransitions());
+    // Reset the scene-transition guard so the next Play press always works
+    import('./engine.scenes.js').then(m => m._resetSceneTransitionGuard?.());
     _blockEditorInput(false);    // restore input
     _showEditorUI();
     // Restore audio source visuals (hidden during play mode)

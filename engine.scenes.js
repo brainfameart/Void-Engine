@@ -85,6 +85,10 @@ export function switchToScene(index) {
     }
 }
 
+// ── Transition guard — prevents overlapping gotoScene / restartScene calls ──
+let _sceneTransitioning = false;
+export function _resetSceneTransitionGuard() { _sceneTransitioning = false; }
+
 // ── Switch scene during PLAY MODE (does NOT corrupt editor snapshots) ──
 // This is what gotoScene() calls at runtime. It:
 // 1. Stops current scripts/physics without saving play state
@@ -97,8 +101,13 @@ export function playModeGotoScene(index, onReady = null) {
         );
         return;
     }
+    // Guard: if a scene transition is already in flight, ignore duplicates.
+    // This prevents double-restarts and clone-interruption glitches.
+    if (_sceneTransitioning) return;
+    _sceneTransitioning = true;
+
     const target = state.scenes[index];
-    if (!target) return;
+    if (!target) { _sceneTransitioning = false; return; }
 
     // Stop scripts/physics for the current scene
     Promise.all([
@@ -106,7 +115,6 @@ export function playModeGotoScene(index, onReady = null) {
         import('./engine.physics.js').then(m => m.stopPhysics()),
         import('./engine.audio.js').then(m => { m.stopPlayAudio(); m._stopAllScriptSounds(); }),
     ]).then(() => {
-        // Destroy current play-mode objects WITHOUT saving to snapshot
         for (const obj of state.gameObjects) {
             state.sceneContainer?.removeChild(obj);
             try { obj.destroy({ children: true }); } catch(_) {}
@@ -115,7 +123,11 @@ export function playModeGotoScene(index, onReady = null) {
         state.gameObject  = null;
 
         // Apply new scene settings first so scalingMode is correct
-        const snap = target.snapshot;
+        // If the target scene has never been saved (snapshot is null) AND it's the
+        // same scene that was active when Play was pressed, fall back to the play
+        // snapshot so restartScene() works identically to pressing Play fresh.
+        const isSameScene = (index === (state._playSnapshot?.originSceneIndex ?? state.activeSceneIndex));
+        const snap = target.snapshot ?? (isSameScene ? state._playSnapshot : null);
         if (snap?.sceneSettings) {
             state.sceneSettings = { ...state.sceneSettings, ...snap.sceneSettings };
             if (state.app?.renderer) state.app.renderer.background.color = state.sceneSettings.bgColor;
@@ -239,12 +251,22 @@ export function playModeGotoScene(index, onReady = null) {
                 m.startRuntimeAnimations();
                 import('./engine.physics.js').then(pm => pm.startPhysics());
                 import('./engine.audio.js').then(am => am.startPlayAudio());
-                import('./engine.scripting.js').then(sm => { sm.startScripts(); if (onReady) onReady(); });
+                import('./engine.scripting.js').then(sm => {
+                    sm.startScripts();
+                    if (onReady) onReady();
+                    // Release the guard AFTER scripts start — prevents overlapping
+                    // restartScene / gotoScene calls during the transition but
+                    // allows a new call once the scene is fully live.
+                    _sceneTransitioning = false;
+                });
             });
             import('./engine.scripting.js').then(m =>
                 m._logConsolePublic(`▶ Scene loaded: "${target.name}"`, '#4ade80')
             );
         });
+    }).catch(err => {
+        console.error('[Zengine] playModeGotoScene failed:', err);
+        _sceneTransitioning = false;
     });
 }
 
