@@ -167,8 +167,8 @@ function initMenus() {
             toggleMenu(fileBtn, [
                 { label: '🆕  New Project',      action: () => newProject() },
                 { separator: true },
-                { label: '💾  Save Project…',    action: () => saveProject() },
-                { label: '📂  Load Project…',    action: () => loadProject() },
+                { label: '💾  Save Project (.zen)…', action: () => saveProject() },
+                { label: '📂  Load Project (.zen)…', action: () => loadProject() },
                 { separator: true },
                 { label: '🗑️  Clear Saved Session', action: async () => {
                     if (!confirm('Clear the auto-saved session? This cannot be undone.\nYour current work will remain open until you refresh.')) return;
