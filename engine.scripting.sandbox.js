@@ -47,9 +47,21 @@ function _buildSandbox(obj, instRef) {
     const _keyDownHandlers = new Map();
     const _keyUpHandlers   = new Map();
     // Hammer.js gesture handlers
-    const _swipeHandlers   = new Map(); // direction → fn
-    let   _pinchHandler    = null;
-    let   _tapHandler      = null;
+    const _swipeHandlers      = new Map(); // direction → fn
+    let   _pinchHandler       = null;  // fn(scale)  — raw Hammer scale (1.0 = start)
+    let   _pinchInHandler     = null;  // fn(scale)  — fingers spreading apart (zoom in)
+    let   _pinchOutHandler    = null;  // fn(scale)  — fingers closing together (zoom out)
+    let   _tapHandler         = null;  // fn()
+    let   _doubleTapHandler   = null;  // fn()
+    let   _longPressHandler   = null;  // fn()
+    let   _rotateHandler      = null;  // fn(degrees) — two-finger rotation delta
+    const _multiSwipeHandlers = new Map(); // direction → fn  (two-finger swipe)
+    let   _touchStartHandler  = null;  // fn(touches)
+    let   _touchEndHandler    = null;  // fn(touches)
+    let   _tiltHandler        = null;  // fn(tiltX, tiltY) — device gyro
+    let   _lastTiltX          = 0;
+    let   _lastTiltY          = 0;
+    let   _lastPinchScale     = 1; // tracks prev scale so we can derive pinchIn/pinchOut direction
     // Cache for drawText() calls — keyed by id so onUpdate calls update existing
     // nodes instead of creating duplicates every frame.
     const _drawTextCache   = new Map();
@@ -2044,10 +2056,13 @@ function _buildSandbox(obj, instRef) {
                 obj.scale.x = origSX;
                 obj.scale.y = origSY;
                 if (_activeDragObj === obj) {
-                    const capVx = _throwVelX * (opts.speed ?? 1);
-                    const capVy = _throwVelY * (opts.speed ?? 1);
-                    // Apply velocity, then clear state
+                    // Snapshot velocity BEFORE clearing state so onThrow callback gets correct values
+                    const speedMul = opts.speed ?? 1;
+                    const capVx = _throwVelX * speedMul;
+                    const capVy = _throwVelY * speedMul;
+                    // Apply throw — _activeDragOpts still live here so _applyThrowVelocity can read opts
                     try { _applyThrowVelocity(obj); } catch(_) {}
+                    // Clear AFTER applying
                     _activeDragObj  = null;
                     _activeDragOpts = {};
                     _throwVelX = _throwVelY = _throwPrevX = _throwPrevY = 0;
@@ -2064,7 +2079,7 @@ function _buildSandbox(obj, instRef) {
                 origSY = obj.scale.y;
                 obj.scale.x = origSX * scaleMul;
                 obj.scale.y = origSY * scaleMul;
-                // Reset throw tracking
+                // Seed throw tracking from current position
                 _throwVelX = _throwVelY = 0;
                 _throwPrevX = obj.x / 100;
                 _throwPrevY = -obj.y / 100;
@@ -2072,10 +2087,13 @@ function _buildSandbox(obj, instRef) {
                 _activeDragOpts = {
                     smooth,
                     clampToGameBounds: clamp,
-                    throw: true,
-                    speed: opts.speed     ?? 1,
+                    throw:    true,
+                    speed:    opts.speed    ?? 1,
                     maxSpeed: opts.maxSpeed ?? null,
-                    _throwAlpha: 0.25,
+                    _throwAlpha: 0.2,
+                    // onDrop fires from _onDragMouseUp.
+                    // It calls release() which applies throw then clears state.
+                    // _onDragMouseUp will NOT double-apply because opts.onDrop is set.
                     onDrop: () => release(),
                 };
             };
@@ -2160,25 +2178,140 @@ function _buildSandbox(obj, instRef) {
         /** Register a callback fired once when a key is released. */
         onKeyUp(key, fn)   { _keyUpHandlers.set(key.toLowerCase(), fn); },
 
-        // ── MOBILE / GESTURE HANDLERS (Hammer.js) ─────────────
+        // ── MOBILE / GESTURE HANDLERS ────────────────────────────
+
         /**
-         * Register a swipe handler.
-         * direction: "left" | "right" | "up" | "down" | "any"
-         * fn receives the direction string when triggered.
+         * One-finger swipe. direction: "left"|"right"|"up"|"down"|"any"
+         *   onSwipe("left",  () => { velocityX = -5; });
+         *   onSwipe("any",   (dir) => { log("swiped " + dir); });
          */
         onSwipe(direction, fn) {
-            const d = String(direction).toLowerCase();
-            _swipeHandlers.set(d, fn);
+            _swipeHandlers.set(String(direction).toLowerCase(), fn);
         },
-        /** Register a pinch (two-finger zoom) handler. fn receives the scale factor. */
-        onPinch(fn) { _pinchHandler = fn; },
-        /** Register a tap handler (short touch). */
-        onTap(fn)   { _tapHandler   = fn; },
 
-        // Expose gesture maps so ScriptInstance can wire Hammer.js
-        get _swipeHandlers() { return _swipeHandlers; },
-        get _pinchHandler()  { return _pinchHandler;  },
-        get _tapHandler()    { return _tapHandler;    },
+        /**
+         * Two-finger swipe. direction: "left"|"right"|"up"|"down"|"any"
+         * Useful for scrolling/panning the camera while one finger controls a character.
+         *   onMultiSwipe("up", () => { camera.y += 2; });
+         */
+        onMultiSwipe(direction, fn) {
+            _multiSwipeHandlers.set(String(direction).toLowerCase(), fn);
+        },
+
+        /**
+         * Two-finger pinch — fires every frame while pinching.
+         * scale > 1 means fingers are spreading apart (zoom in).
+         * scale < 1 means fingers are closing together (zoom out).
+         * Scale resets to 1.0 at the start of each new pinch gesture.
+         *   onPinch((scale) => { obj.scaleX *= scale; obj.scaleY *= scale; });
+         */
+        onPinch(fn) { _pinchHandler = fn; },
+
+        /**
+         * Fires when fingers are spreading apart (zoom in direction).
+         * fn receives the current scale value (always > 1 relative to pinch start).
+         *   onPinchIn((scale) => { camera.zoom *= 1.02; });
+         */
+        onPinchIn(fn) { _pinchInHandler = fn; },
+
+        /**
+         * Fires when fingers are moving closer together (zoom out direction).
+         * fn receives the current scale value (always < 1 relative to pinch start).
+         *   onPinchOut((scale) => { camera.zoom *= 0.98; });
+         */
+        onPinchOut(fn) { _pinchOutHandler = fn; },
+
+        /**
+         * Two-finger rotation. fn receives the rotation DELTA in degrees this frame.
+         * Positive = clockwise, negative = counter-clockwise.
+         *   onRotate((deg) => { setRotation(getRotation() + deg); });
+         */
+        onRotate(fn) { _rotateHandler = fn; },
+
+        /**
+         * Short tap (works on touch AND mouse click).
+         *   onTap(() => { jump(); });
+         */
+        onTap(fn) { _tapHandler = fn; },
+
+        /**
+         * Double tap / double click.
+         *   onDoubleTap(() => { dash(); });
+         */
+        onDoubleTap(fn) { _doubleTapHandler = fn; },
+
+        /**
+         * Long press — fires after ~500ms of holding without moving.
+         *   onLongPress(() => { openContextMenu(); });
+         */
+        onLongPress(fn) { _longPressHandler = fn; },
+
+        /**
+         * Fires when any finger touches the screen this frame.
+         * fn receives the touches array: [{id, x, y}]
+         *   onTouchStart((touches) => { log("fingers:", touches.length); });
+         */
+        onTouchStart(fn) { _touchStartHandler = fn; },
+
+        /**
+         * Fires when a finger lifts from the screen this frame.
+         * fn receives the remaining touches array.
+         *   onTouchEnd((touches) => { if (!touches.length) land(); });
+         */
+        onTouchEnd(fn) { _touchEndHandler = fn; },
+
+        /**
+         * Device tilt via gyroscope (mobile only, requires user permission on iOS).
+         * tiltX = left/right tilt in degrees (-90…90), tiltY = forward/back tilt.
+         * Called every frame while tilting.
+         * On first call, automatically requests iOS permission if needed.
+         *
+         *   onTilt((tiltX, tiltY) => {
+         *       velocityX = tiltX * 0.1;  // tilt phone to move
+         *   });
+         */
+        onTilt(fn) {
+            _tiltHandler = fn;
+            _setupTilt();
+        },
+
+        /**
+         * Trigger the device vibration motor (mobile only, ignored on desktop).
+         * duration: ms (default 80). Can also pass an array for a pattern: [100, 50, 100]
+         *   vibrate();          // short buzz
+         *   vibrate(200);       // 200ms buzz
+         *   vibrate([100,50,200]); // pattern: buzz, pause, buzz
+         */
+        vibrate(duration) {
+            if (!navigator.vibrate) return;
+            try { navigator.vibrate(duration ?? 80); } catch(_) {}
+        },
+
+        /** Number of fingers currently on screen (same as touchCount property). */
+        getTouchCount() { return _activeTouches.length; },
+
+        /** True if exactly N fingers are on screen right now. */
+        isMultiTouch(n) { return _activeTouches.length === (n ?? 2); },
+
+        // ── Internal getters used by runtime to wire Hammer.js ──
+        get _swipeHandlers()      { return _swipeHandlers;      },
+        get _multiSwipeHandlers() { return _multiSwipeHandlers; },
+        get _pinchHandler()       { return _pinchHandler;       },
+        get _pinchInHandler()     { return _pinchInHandler;     },
+        get _pinchOutHandler()    { return _pinchOutHandler;    },
+        get _rotateHandler()      { return _rotateHandler;      },
+        get _tapHandler()         { return _tapHandler;         },
+        get _doubleTapHandler()   { return _doubleTapHandler;   },
+        get _longPressHandler()   { return _longPressHandler;   },
+        get _touchStartHandler()  { return _touchStartHandler;  },
+        get _touchEndHandler()    { return _touchEndHandler;    },
+        get _tiltHandler()        { return _tiltHandler;        },
+        get _lastTiltX()          { return _lastTiltX;          },
+        get _lastTiltY()          { return _lastTiltY;          },
+        set _lastTiltX(v)         { _lastTiltX = v;             },
+        set _lastTiltY(v)         { _lastTiltY = v;             },
+        get _lastPinchScale()     { return _lastPinchScale;     },
+        set _lastPinchScale(v)    { _lastPinchScale = v;        },
 
         // ── PHYSICS HELPERS ───────────────────────────────────
         /**
@@ -2380,6 +2513,33 @@ function _buildSandbox(obj, instRef) {
             };
         },
     };
+
+    // ── Tilt (DeviceOrientation) setup ──────────────────────────
+    let _tiltListenerAdded = false;
+    function _setupTilt() {
+        if (_tiltListenerAdded) return;
+        _tiltListenerAdded = true;
+
+        const _startListening = () => {
+            window.addEventListener('deviceorientation', (e) => {
+                // gamma = left/right tilt (-90…90), beta = forward/back (-180…180)
+                const tx = e.gamma ?? 0;
+                const ty = e.beta  ?? 0;
+                api._lastTiltX = tx;
+                api._lastTiltY = ty;
+            }, { passive: true });
+        };
+
+        // iOS 13+ requires explicit permission
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(perm => { if (perm === 'granted') _startListening(); })
+                .catch(() => {});
+        } else {
+            _startListening();
+        }
+    }
 
     return { api, _keys, _keysJustDown, _keysJustUp, _mouse, _tweens, _repeats, _keyDownHandlers, _keyUpHandlers };
 }

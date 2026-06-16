@@ -808,31 +808,81 @@ function isTouching()         { return input.mouseDown; }
  */
 function touchJustStarted()   { return input.mouseJustDown; }
 /**
- * Register a swipe handler using Hammer.js.
- * direction: "left" | "right" | "up" | "down" | "any"
- *
- * Example:
- *   onSwipe("left",  () => { move(-3, 0); });
- *   onSwipe("right", () => { move( 3, 0); });
- *   onSwipe("up",    () => { velocityY = 5; });
+ * One-finger swipe. direction: "left"|"right"|"up"|"down"|"any"
+ *   onSwipe("left",  () => { velocityX = -5; });
  *   onSwipe("any",   (dir) => { log("swiped " + dir); });
  */
-function onSwipe(direction, fn) { api.onSwipe(direction, fn); }
+function onSwipe(direction, fn)      { api.onSwipe(direction, fn); }
 /**
- * Register a pinch handler (two-finger pinch/zoom).
- * fn receives the pinch scale (>1 = zoom in, <1 = zoom out).
- *
- * Example:
- *   onPinch((scale) => { setScaleX(getScaleX() * scale); setScaleY(getScaleY() * scale); });
+ * Two-finger swipe (for panning/scrolling while one finger controls the player).
+ *   onMultiSwipe("up", () => { camera.y += 2; });
  */
-function onPinch(fn)            { api.onPinch(fn); }
+function onMultiSwipe(direction, fn) { api.onMultiSwipe(direction, fn); }
 /**
- * Register a tap handler (triggered by a quick touch tap).
- *
- * Example:
- *   onTap(() => { gotoScene("Menu"); });
+ * Two-finger pinch. fn receives scale relative to pinch start (1.0 = no change).
+ * scale > 1 = fingers spreading apart (zoom in), scale < 1 = fingers closing (zoom out).
+ *   onPinch((scale) => { log("pinch scale:", scale); });
  */
-function onTap(fn)              { api.onTap(fn); }
+function onPinch(fn)                 { api.onPinch(fn); }
+/**
+ * Fires every frame while fingers are spreading apart (zooming in).
+ *   onPinchIn((scale) => { camera.zoom *= 1.02; });
+ */
+function onPinchIn(fn)               { api.onPinchIn(fn); }
+/**
+ * Fires every frame while fingers are closing together (zooming out).
+ *   onPinchOut((scale) => { camera.zoom *= 0.98; });
+ */
+function onPinchOut(fn)              { api.onPinchOut(fn); }
+/**
+ * Two-finger rotation. fn receives the delta in degrees this frame.
+ * Positive = clockwise, negative = counter-clockwise.
+ *   onRotate((deg) => { setRotation(getRotation() + deg); });
+ */
+function onRotate(fn)                { api.onRotate(fn); }
+/**
+ * Short tap (touch or mouse click).
+ *   onTap(() => { jump(); });
+ */
+function onTap(fn)                   { api.onTap(fn); }
+/**
+ * Double tap / double click.
+ *   onDoubleTap(() => { dash(); });
+ */
+function onDoubleTap(fn)             { api.onDoubleTap(fn); }
+/**
+ * Long press — fires after ~500ms hold without moving.
+ *   onLongPress(() => { openMenu(); });
+ */
+function onLongPress(fn)             { api.onLongPress(fn); }
+/**
+ * Fires when any finger touches the screen. fn receives the touches array.
+ *   onTouchStart((touches) => { log("fingers on screen:", touches.length); });
+ */
+function onTouchStart(fn)            { api.onTouchStart(fn); }
+/**
+ * Fires when a finger lifts. fn receives remaining touches array.
+ *   onTouchEnd((touches) => { if (!touches.length) land(); });
+ */
+function onTouchEnd(fn)              { api.onTouchEnd(fn); }
+/**
+ * Device tilt via gyroscope (mobile only). Called every frame while tilting.
+ * tiltX = left/right in degrees, tiltY = forward/back.
+ * Requests iOS permission automatically on first call.
+ *   onTilt((tiltX, tiltY) => { velocityX = tiltX * 0.08; });
+ */
+function onTilt(fn)                  { api.onTilt(fn); }
+/**
+ * Trigger device vibration (mobile only, silently ignored on desktop).
+ * duration in ms, or a pattern array: vibrate([100, 50, 100])
+ *   vibrate();        // short buzz
+ *   vibrate(300);     // 300ms buzz
+ */
+function vibrate(duration)           { api.vibrate(duration); }
+/** Number of fingers currently on screen. */
+function getTouchCount()             { return api.getTouchCount(); }
+/** True if exactly N fingers are on screen right now. */
+function isMultiTouch(n)             { return api.isMultiTouch(n); }
 
 // ── Time ──────────────────────────────────────────────────────
 /** Total seconds since Play was pressed */
@@ -2363,28 +2413,24 @@ function _applyDragThisFrame(dt) {
     }
 
     // ── Throw velocity tracking ──────────────────────────────
-    // Sample instantaneous velocity using exponential smoothing so that
-    // a momentarily-still cursor doesn't zero-out the throw.
     if (_activeDragOpts.throw) {
         const realDt = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
-        const rawVx  = (wx - _throwPrevX) / realDt;   // world units/sec
+        const rawVx  = (wx - _throwPrevX) / realDt;
         const rawVy  = (wy - _throwPrevY) / realDt;
-        const alpha  = _activeDragOpts._throwAlpha ?? 0.35; // smoothing (0=no smooth,1=all prev)
+        const alpha  = _activeDragOpts._throwAlpha ?? 0.25;
         _throwVelX = _throwVelX * alpha + rawVx * (1 - alpha);
         _throwVelY = _throwVelY * alpha + rawVy * (1 - alpha);
         _throwPrevX = wx;
         _throwPrevY = wy;
     }
-    // ────────────────────────────────────────────────────────
 
-    _activeDragObj.x =  wx * 100;
-    _activeDragObj.y = -wy * 100;
-
-    // ── Dynamic body fix: Planck overwrites obj.x/y every step from body position.
-    // We must also move the body itself, and zero its velocity so physics doesn't
-    // immediately push it back.
     const draggedObj = _activeDragObj;
-    if (draggedObj.physicsBody === 'dynamic' && draggedObj._physicsBody && window.planck) {
+    const ptype      = draggedObj.physicsBody;
+
+    if (ptype === 'dynamic' && draggedObj._physicsBody && window.planck) {
+        // ── Dynamic: move the Planck body directly each frame.
+        // Zero ALL velocity (linear + angular + gravity contribution) so the body
+        // stays exactly under the finger instead of sinking or jittering.
         const body = draggedObj._physicsBody;
         const off  = body._zenOffset || { x: 0, y: 0 };
         const ang  = body.getAngle();
@@ -2392,51 +2438,92 @@ function _applyDragThisFrame(dt) {
         const sinR = Math.sin(ang);
         body.setTransform(
             window.planck.Vec2(
-                draggedObj.x + off.x * cosR - off.y * sinR,
-                draggedObj.y + off.x * sinR + off.y * cosR
+                wx * 100 + off.x * cosR - off.y * sinR,
+                -wy * 100 + off.x * sinR + off.y * cosR
             ),
             ang
         );
         body.setLinearVelocity(window.planck.Vec2(0, 0));
         body.setAngularVelocity(0);
         body.setAwake(true);
+        // Sync PIXI position from Planck so they stay in agreement
+        draggedObj.x =  wx * 100;
+        draggedObj.y = -wy * 100;
+
+    } else if (ptype === 'kinematic') {
+        // ── Kinematic: write velocity so the physics SAT sweep carries the object
+        // smoothly this frame instead of treating it as a raw teleport.
+        // Velocity is in px/sec (engine internal units).
+        const realDt = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
+        const prevX  = draggedObj._kinematicPrevX ?? draggedObj.x;
+        const prevY  = draggedObj._kinematicPrevY ?? draggedObj.y;
+        const desiredX =  wx * 100;
+        const desiredY = -wy * 100;
+        // Express the desired displacement as a velocity for this frame
+        draggedObj._kinematicVx = (desiredX - prevX) / realDt;
+        draggedObj._kinematicVy = (desiredY - prevY) / realDt;
+        // Also write position directly so smooth lerp lag doesn't drift
+        draggedObj.x = desiredX;
+        draggedObj.y = desiredY;
+
+    } else {
+        // ── No physics body (none / static): direct position write.
+        // Clear any scripting velocity so the object doesn't drift while held.
+        draggedObj.x =  wx * 100;
+        draggedObj.y = -wy * 100;
+        if (draggedObj._vel) { draggedObj._vel.x = 0; draggedObj._vel.y = 0; }
     }
 }
 
 // Apply throw velocity to the released physics body
 function _applyThrowVelocity(obj) {
-    const opts    = _activeDragOpts;
+    const opts     = _activeDragOpts;
     const speedMul = opts.speed ?? 1;
     let vx = _throwVelX * speedMul;
     let vy = _throwVelY * speedMul;
 
-    // Optional max-speed cap
     if (opts.maxSpeed != null) {
         const spd = Math.sqrt(vx * vx + vy * vy);
-        if (spd > opts.maxSpeed) {
-            const s = opts.maxSpeed / spd;
-            vx *= s; vy *= s;
-        }
+        if (spd > opts.maxSpeed) { const s = opts.maxSpeed / spd; vx *= s; vy *= s; }
     }
 
     const ptype = obj.physicsBody;
     if (ptype === 'dynamic' && obj._physicsBody && window.planck) {
-        // Dynamic: set Planck body velocity directly (pixels/sec → planck units)
+        // Dynamic Planck body: set velocity directly.
+        // vx/vy are world units/sec — Planck uses px/sec internally.
         obj._physicsBody.setLinearVelocity(window.planck.Vec2(vx * 100, -vy * 100));
         obj._physicsBody.setAwake(true);
+
     } else if (ptype === 'kinematic') {
-        // Kinematic: write into the engine's kinematic velocity slots
-        obj._kinematicVx =  vx * 100;   // stored in px/sec internally
+        // Kinematic: write into the scripting velocity (_vel) so the value persists
+        // across frames. The update loop converts _vel → _kinematicVx/_kinematicVy
+        // each frame, which is what the SAT sweep reads.
+        // Writing _kinematicVx directly is NOT sufficient — it gets cleared after
+        // each physics step, causing a one-frame-only movement.
+        const api = _instances.find(i => i.obj === obj)?.api;
+        if (api) {
+            api._vel = api._vel ?? { x: 0, y: 0 };
+            api._vel.x = vx;
+            api._vel.y = vy;
+        }
+        // Also seed the kinematic slots for the very next frame (before update() runs)
+        obj._kinematicVx =  vx * 100;
         obj._kinematicVy = -vy * 100;
-        obj._velDirty = true;
+
     } else {
-        // No physics body — fall back to scripting velocity fields
+        // No physics body: write into _vel for sustained movement
+        const api = _instances.find(i => i.obj === obj)?.api;
+        if (api) {
+            api._vel = api._vel ?? { x: 0, y: 0 };
+            api._vel.x = vx;
+            api._vel.y = vy;
+        }
         obj._vel = obj._vel ?? { x: 0, y: 0 };
         obj._vel.x = vx;
         obj._vel.y = vy;
-        obj._velDirty  = true;
-        obj._velSetX   = true;
-        obj._velSetY   = true;
+        obj._velDirty = true;
+        obj._velSetX  = true;
+        obj._velSetY  = true;
     }
 }
 
@@ -2444,14 +2531,21 @@ function _applyThrowVelocity(obj) {
 function _onDragMouseUp() {
     if (!_activeDragObj) return;
 
-    // Apply throw velocity before clearing state
-    if (_activeDragOpts.throw) {
-        try { _applyThrowVelocity(_activeDragObj); } catch(_) {}
+    const obj  = _activeDragObj;
+    const opts = _activeDragOpts;
+
+    // Only apply throw here for LOW-LEVEL throwObject()/dragObject() calls
+    // that set throw:true without their own onDrop handler.
+    // makeThrowable() provides its own onDrop → release() → _applyThrowVelocity.
+    // Calling it here too would double-apply and produce exaggerated velocities.
+    if (opts.throw && !opts.onDrop) {
+        try { _applyThrowVelocity(obj); } catch(_) {}
     }
 
-    if (_activeDragOpts?.onDrop) {
-        try { _activeDragOpts.onDrop(_activeDragObj); } catch(_) {}
+    if (opts.onDrop) {
+        try { opts.onDrop(obj); } catch(_) {}
     }
+
     _activeDragObj  = null;
     _activeDragOpts = {};
     _throwVelX = _throwVelY = _throwPrevX = _throwPrevY = 0;
@@ -2669,13 +2763,29 @@ function _initHammer() {
     const canvas = state.app?.view;
     if (!canvas || typeof window.Hammer === 'undefined') return;
 
+    // Build recognizer list — Hammer needs explicit enable for multi-touch ones
+    const Swipe  = window.Hammer.Swipe;
+    const Pinch  = window.Hammer.Pinch;
+    const Rotate = window.Hammer.Rotate;
+    const Tap    = window.Hammer.Tap;
+    const Press  = window.Hammer.Press;
+
     const hm = new window.Hammer.Manager(canvas, {
         recognizers: [
-            [window.Hammer.Swipe,  { direction: window.Hammer.DIRECTION_ALL, threshold: 10, velocity: 0.3 }],
-            [window.Hammer.Pinch,  { enable: true }],
-            [window.Hammer.Tap,    { event: 'tap' }],
+            [Swipe,  { direction: window.Hammer.DIRECTION_ALL, threshold: 10, velocity: 0.3,
+                       pointers: 1 }],
+            [Swipe,  { event: 'multiswipe', direction: window.Hammer.DIRECTION_ALL,
+                       threshold: 10, velocity: 0.3, pointers: 2 }],
+            [Pinch,  { enable: true, pointers: 2 }],
+            [Rotate, { enable: true, pointers: 2 }],
+            [Tap,    { event: 'doubletap', taps: 2, interval: 300 }],
+            [Tap,    { event: 'tap',       taps: 1 }],
+            [Press,  { event: 'longpress', time: 500, threshold: 10 }],
         ],
     });
+
+    // Require single-tap to fail before triggering (prevents double-firing on double-tap)
+    hm.get('tap').requireFailure(hm.get('doubletap'));
 
     const DIRECTION_MAP = {
         [window.Hammer.DIRECTION_LEFT]:  'left',
@@ -2684,42 +2794,103 @@ function _initHammer() {
         [window.Hammer.DIRECTION_DOWN]:  'down',
     };
 
+    function _fireOnInst(inst, fn, arg, eventName) {
+        if (!fn) return;
+        try { fn(arg); }
+        catch (e) {
+            const friendly = _friendlyScriptError(e, null, inst.name, inst.obj?.label ?? '?', eventName);
+            for (const line of friendly) _logConsole(line, '#f87171');
+            import('./engine.console.js').then(m => m.recordPlayError());
+        }
+    }
+
+    // ── One-finger swipe ──────────────────────────────────────
     hm.on('swipe', (ev) => {
         const dir = DIRECTION_MAP[ev.direction] ?? 'any';
         for (const inst of _instances) {
             const map = inst.api?._swipeHandlers;
             if (!map) continue;
-            const fn = map.get(dir) ?? map.get('any');
-            if (fn) try { fn(dir); }
-            catch (e) {
-                const friendly = _friendlyScriptError(e, null, inst.name, inst.obj?.label ?? '?', 'onSwipe');
-                for (const line of friendly) _logConsole(line, '#f87171');
-                import('./engine.console.js').then(m => m.recordPlayError());
-            }
+            _fireOnInst(inst, map.get(dir) ?? map.get('any'), dir, 'onSwipe');
         }
     });
 
-    hm.on('pinch', (ev) => {
+    // ── Two-finger swipe ──────────────────────────────────────
+    hm.on('multiswipe', (ev) => {
+        const dir = DIRECTION_MAP[ev.direction] ?? 'any';
         for (const inst of _instances) {
-            const fn = inst.api?._pinchHandler;
-            if (fn) try { fn(ev.scale); }
-            catch (e) {
-                const friendly = _friendlyScriptError(e, null, inst.name, inst.obj?.label ?? '?', 'onPinch');
-                for (const line of friendly) _logConsole(line, '#f87171');
-                import('./engine.console.js').then(m => m.recordPlayError());
+            const map = inst.api?._multiSwipeHandlers;
+            if (!map) continue;
+            _fireOnInst(inst, map.get(dir) ?? map.get('any'), dir, 'onMultiSwipe');
+        }
+    });
+
+    // ── Pinch — raw scale + directional pinchIn/pinchOut ─────
+    // ev.scale is relative to the START of this pinch gesture (resets to 1.0 each time).
+    // To know if fingers are spreading (pinchIn) or closing (pinchOut) we compare
+    // ev.scale to the last scale value we saw.
+    hm.on('pinchstart', () => {
+        // Reset per-gesture last-scale on every new pinch start
+        for (const inst of _instances) {
+            if (inst.api) inst.api._lastPinchScale = 1;
+        }
+    });
+
+    hm.on('pinch pinchstart pinchmove', (ev) => {
+        for (const inst of _instances) {
+            if (!inst.api) continue;
+            const scale     = ev.scale;
+            const lastScale = inst.api._lastPinchScale ?? 1;
+            const delta     = scale - lastScale;   // > 0 = spreading, < 0 = closing
+            inst.api._lastPinchScale = scale;
+
+            // Raw pinch
+            _fireOnInst(inst, inst.api._pinchHandler, scale, 'onPinch');
+
+            // Directional — only fire when direction is clear (ignore noise around delta≈0)
+            if (Math.abs(delta) > 0.005) {
+                if (delta > 0) {
+                    // Fingers spreading apart — zoom IN
+                    _fireOnInst(inst, inst.api._pinchInHandler,  scale, 'onPinchIn');
+                } else {
+                    // Fingers closing together — zoom OUT
+                    _fireOnInst(inst, inst.api._pinchOutHandler, scale, 'onPinchOut');
+                }
             }
         }
     });
 
+    // ── Two-finger rotation ────────────────────────────────────
+    // ev.rotation is cumulative from gesture start.
+    // We derive a per-frame delta from last rotation.
+    let _lastRotation = 0;
+    hm.on('rotatestart', () => { _lastRotation = 0; });
+    hm.on('rotate rotatestart rotatemove', (ev) => {
+        const delta = ev.rotation - _lastRotation;
+        _lastRotation = ev.rotation;
+        if (Math.abs(delta) < 0.3) return; // ignore jitter
+        for (const inst of _instances) {
+            _fireOnInst(inst, inst.api?._rotateHandler, delta, 'onRotate');
+        }
+    });
+
+    // ── Tap ───────────────────────────────────────────────────
     hm.on('tap', () => {
         for (const inst of _instances) {
-            const fn = inst.api?._tapHandler;
-            if (fn) try { fn(); }
-            catch (e) {
-                const friendly = _friendlyScriptError(e, null, inst.name, inst.obj?.label ?? '?', 'onTap');
-                for (const line of friendly) _logConsole(line, '#f87171');
-                import('./engine.console.js').then(m => m.recordPlayError());
-            }
+            _fireOnInst(inst, inst.api?._tapHandler, undefined, 'onTap');
+        }
+    });
+
+    // ── Double tap ────────────────────────────────────────────
+    hm.on('doubletap', () => {
+        for (const inst of _instances) {
+            _fireOnInst(inst, inst.api?._doubleTapHandler, undefined, 'onDoubleTap');
+        }
+    });
+
+    // ── Long press ────────────────────────────────────────────
+    hm.on('longpress', () => {
+        for (const inst of _instances) {
+            _fireOnInst(inst, inst.api?._longPressHandler, undefined, 'onLongPress');
         }
     });
 
@@ -2775,7 +2946,6 @@ function _td(e) {
     _updateActiveTouches(e.touches);
     for (const i of _instances) i._handleMouseDown();
     _muTouchPos = e.changedTouches[0];
-    // Push primary touch screen coords immediately
     const t0 = e.changedTouches[0];
     if (t0) {
         const r = state.app?.view?.getBoundingClientRect?.() ?? { left:0, top:0 };
@@ -2785,12 +2955,16 @@ function _td(e) {
             i._mouse.x = t0.clientX - r.left;
             i._mouse.y = t0.clientY - r.top;
         }
-        // makeDraggable: grab on touchstart over the object
         const cx = t0.clientX - r.left;
         const cy = t0.clientY - r.top;
         for (const i of _instances) {
             if (i._onDragMouseDown) i._handleDragMouseDown(cx, cy);
         }
+    }
+    // Fire onTouchStart handlers
+    for (const inst of _instances) {
+        const fn = inst.api?._touchStartHandler;
+        if (fn) try { fn(_activeTouches.slice()); } catch(_) {}
     }
 }
 function _tu(e) {
@@ -2805,6 +2979,11 @@ function _tu(e) {
     for (const i of _instances) {
         if (i._onMouseClick) i._handleMouseClick(cx, cy);
     }
+    // Fire onTouchEnd handlers
+    for (const inst of _instances) {
+        const fn = inst.api?._touchEndHandler;
+        if (fn) try { fn(_activeTouches.slice()); } catch(_) {}
+    }
 }
 function _tm(e) {
     _updateActiveTouches(e.touches);
@@ -2818,6 +2997,16 @@ function _tm(e) {
 let _muTouchPos = null;
 
 // ── Overlap check pass (runs every frame) ─────────────────────
+function _tickTiltHandlers() {
+    for (const inst of _instances) {
+        const fn = inst.api?._tiltHandler;
+        if (!fn) continue;
+        const tx = inst.api._lastTiltX ?? 0;
+        const ty = inst.api._lastTiltY ?? 0;
+        try { fn(tx, ty); } catch(_) {}
+    }
+}
+
 function _runOverlapChecks() {
     // Only check instances that have overlap handlers
     const tracked = _instances.filter(i => i._onOverlapEnter || i._onOverlapExit);
@@ -2904,6 +3093,7 @@ export function startScripts() {
         _runCollisionStayChecks();
         _applyDragThisFrame(dt);
         _tickTimers(dt);
+        _tickTiltHandlers();
         _tickDebugLines(dt);
 
         // 1. Snapshot every object's previous-frame position so the prediction
