@@ -532,7 +532,7 @@ function destroyObject(other)       { api.destroy(other); }
  * Switch to a different scene by name or index.
  * Example: gotoScene("Level2")  or  gotoScene(1)
  */
-function gotoScene(nameOrIndex)     { api.gotoScene(nameOrIndex); }
+function gotoScene(nameOrIndex, transition, duration) { api.gotoScene(nameOrIndex, transition, duration); }
 /** Name of the current scene */
 function currentScene()             { return api.currentScene; }
 /** Index of the current scene (0-based) */

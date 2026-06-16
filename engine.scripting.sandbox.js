@@ -550,15 +550,19 @@ function _buildSandbox(obj, instRef) {
         // ── SCENE MANAGEMENT ─────────────────────────────────
         /**
          * Switch scenes. Optionally play a transition effect.
-         * gotoScene("Level2")               — instant switch
-         * gotoScene(1)                       — by index
-         * gotoScene("Level2", "fade")        — fade to black
-         * gotoScene("Level2", "fadewhite")   — fade to white
-         * gotoScene("Level2", "slide-left")  — slide left
-         * gotoScene("Level2", "slide-right") — slide right
-         * gotoScene("Level2", "zoom")        — zoom in/out
+         *   gotoScene("Level2")                      — instant switch
+         *   gotoScene(1)                             — by index
+         *   gotoScene("Level2", "fade")              — fade to black (default 0.5s)
+         *   gotoScene("Level2", "fade", 1.2)         — fade with custom duration
+         *   gotoScene("Level2", "fadewhite")         — fade to white
+         *   gotoScene("Level2", "slide-left")        — slide left
+         *   gotoScene("Level2", "slide-right")       — slide right
+         *   gotoScene("Level2", "zoom")              — zoom in/out
+         *
+         * Transition names:  "fade"  "fadewhite"  "slide-left"  "slide-right"  "zoom"
+         * Duration: total seconds for the full transition (default 0.5)
          */
-        gotoScene(nameOrIndex, transition = null) {
+        gotoScene(nameOrIndex, transition = null, duration = 0.5) {
             let idx = -1;
             if (typeof nameOrIndex === 'number') {
                 idx = nameOrIndex;
@@ -574,14 +578,19 @@ function _buildSandbox(obj, instRef) {
                 return;
             }
             if (state.isPlaying) {
-                // Use playModeGotoScene — switches scene while STAYING in play mode,
-                // never touching the editor. No flash, no stopPlayMode, no enterPlayMode.
                 if (transition) {
-                    const t = String(transition);
+                    const t   = String(transition);
+                    const dur = Math.max(0.1, Number(duration) || 0.5);
                     import('./engine.transitions.js').then(tm => {
-                        tm.transitionOut(t, 0.5).then(() => {
+                        // Phase 1: play the exit animation while the OLD scene is still visible.
+                        tm.transitionOut(t, dur).then(() => {
+                            // Phase 2: swap the scene (overlay is fully opaque — user sees nothing).
+                            // Pass onReady so transitionIn fires the moment the new scene is live.
                             import('./engine.scenes.js').then(sm => {
-                                sm.playModeGotoScene(idx, () => tm.transitionIn(t, 0.5));
+                                sm.playModeGotoScene(idx, () => {
+                                    // Phase 3: reveal the new scene.
+                                    tm.transitionIn(t, dur);
+                                });
                             });
                         });
                     });
