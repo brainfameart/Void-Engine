@@ -112,10 +112,10 @@ function _buildModal(obj) {
     modal.id = 'anim-editor-modal';
     modal.style.cssText = `
         position: fixed; inset: 0; z-index: 10000;
-        background: rgba(0,0,0,0.85);
+        background: rgba(13,13,15,0.92);
         display: flex; flex-direction: column;
-        font-family: 'Segoe UI', Tahoma, sans-serif;
-        font-size: 11px; color: #e0e0e0;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        font-size: 11px; color: #e2e2e8;
         user-select: none;
     `;
 
@@ -132,51 +132,52 @@ function _buildModal(obj) {
 function _buildHTML(obj) {
     return `
     <!-- Title bar -->
-    <div style="height:40px; background:#1a1a1a; border-bottom:2px solid #111;
-                display:flex; align-items:center; padding:0 16px; gap:12px; flex-shrink:0;">
-        <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#3A72A5;stroke-width:2;">
+    <div style="height:36px; background:#18181b; border-bottom:1px solid #2a2a2e;
+                display:flex; align-items:center; padding:0 14px; gap:12px; flex-shrink:0;">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:#3b82f6;stroke-width:2;flex-shrink:0;">
             <rect x="2" y="4" width="20" height="16" rx="2"/>
             <path d="M8 4v16M2 9h6M2 15h6"/>
         </svg>
-        <span style="font-size:14px; font-weight:bold; color:#fff;">Animation Editor</span>
-        <span style="color:#666;">—</span>
-        <span style="color:#aaa;">${obj.label || 'Object'}</span>
+        <span style="font-size:11px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; color:#a0a0ae;">Animation Editor</span>
+        <span style="color:#3a3a42;">—</span>
+        <span style="color:#8a8a96;">${obj.label || 'Object'}</span>
         <div style="flex:1;"></div>
         <!-- Import zip/folder -->
-        <label id="anim-import-label" style="background:#2a4a6a; border:1px solid #3A72A5; color:#cce;
-               border-radius:3px; padding:4px 12px; cursor:pointer; font-size:11px;">
-            ⬆ Import ZIP / Images
+        <label id="anim-import-label" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#e2e2e8;
+               border-radius:3px; padding:5px 12px; cursor:pointer; font-size:10px; font-weight:500; display:flex; align-items:center; gap:6px;">
+            <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;flex-shrink:0;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import ZIP / Images
         </label>
         <input type="file" id="anim-file-input" accept=".zip,image/*" multiple style="display:none;">
         <!-- Spritesheet slicer -->
-        <button id="anim-slice-sheet-btn" style="background:#2a3a2a; border:1px solid #4ade80; color:#4ade80;
-                border-radius:3px; padding:4px 12px; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:5px;">
-            <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;">
+        <button id="anim-slice-sheet-btn" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#4ade80;
+                border-radius:3px; padding:5px 12px; cursor:pointer; font-size:10px; font-weight:500; display:flex; align-items:center; gap:6px;">
+            <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
               <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
               <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
             </svg>
             Slice Sheet
         </button>
-        <button id="anim-close-btn" style="background:#3a2a2a; border:1px solid #6a3a3a; color:#f88;
-                border-radius:3px; padding:4px 12px; cursor:pointer; font-size:12px;">✕ Close</button>
+        <button id="anim-close-btn" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#f87171;
+                border-radius:3px; padding:5px 12px; cursor:pointer; font-size:10px; font-weight:500;">Close</button>
     </div>
 
     <!-- Main area -->
     <div style="flex:1; display:flex; overflow:hidden;">
 
         <!-- LEFT: Animation list -->
-        <div style="width:200px; background:#242424; border-right:2px solid #111;
+        <div style="width:200px; background:#1a1a1d; border-right:1px solid #2a2a2e;
                     display:flex; flex-direction:column; flex-shrink:0;">
-            <div style="padding:8px 10px; background:#1e1e1e; border-bottom:1px solid #111;
-                        font-weight:bold; color:#aaa; font-size:10px; letter-spacing:1px;">
-                ANIMATIONS
+            <div style="padding:8px 10px; background:#18181b; border-bottom:1px solid #2a2a2e;
+                        font-weight:600; color:#a0a0ae; font-size:10px; letter-spacing:0.6px; text-transform:uppercase;">
+                Animations
             </div>
             <div id="anim-list" style="flex:1; overflow-y:auto;"></div>
-            <div style="padding:8px; border-top:1px solid #111;">
-                <button id="anim-new-btn" style="width:100%; background:#1e3a1e; border:1px solid #2a6a2a;
-                        color:#8f8; border-radius:3px; padding:5px; cursor:pointer; font-size:11px;">
-                    ＋ New Animation
+            <div style="padding:8px; border-top:1px solid #2a2a2e;">
+                <button id="anim-new-btn" style="width:100%; background:#1a1a1d; border:1px solid #2a2a2e;
+                        color:#4ade80; border-radius:3px; padding:6px; cursor:pointer; font-size:10px; font-weight:500;">
+                    + New Animation
                 </button>
             </div>
         </div>
@@ -186,40 +187,46 @@ function _buildHTML(obj) {
 
             <!-- Preview area -->
             <div style="flex:1; display:flex; align-items:center; justify-content:center;
-                        background:#1e1e1e; position:relative; min-height:0;">
+                        background:#161618; position:relative; min-height:0;">
                 <canvas id="anim-preview-canvas"
                         style="max-width:100%; max-height:100%; image-rendering:pixelated;
-                               border:1px solid #333; background:#282828;"></canvas>
-                <div id="anim-empty-hint" style="position:absolute; color:#444; font-size:16px;
+                               border:1px solid #2a2a2e; background:#1e1e21;"></canvas>
+                <div id="anim-empty-hint" style="position:absolute; color:#3a3a42; font-size:13px;
                      pointer-events:none; display:none;">
                     No frames — import images or a ZIP to begin
                 </div>
 
                 <!-- Playback controls overlay -->
                 <div style="position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
-                            display:flex; gap:6px; background:rgba(0,0,0,0.7);
-                            border:1px solid #333; border-radius:20px; padding:6px 14px; align-items:center;">
+                            display:flex; gap:6px; background:rgba(24,24,27,0.92);
+                            border:1px solid #2a2a2e; border-radius:20px; padding:6px 14px; align-items:center;">
                     <button id="anim-prev-frame" title="Prev frame"
-                            style="background:none; border:none; color:#aaa; cursor:pointer; font-size:16px;">⏮</button>
+                            style="background:none; border:none; color:#a0a0ae; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:4px;">
+                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M6 6h2v12H6zM20 6L9 12l11 6V6z"/></svg>
+                    </button>
                     <button id="anim-play-btn" title="Play/Pause"
-                            style="background:#3A72A5; border:none; color:#fff; cursor:pointer;
-                                   font-size:16px; width:32px; height:32px; border-radius:50%;">▶</button>
+                            style="background:#3b82f6; border:none; color:#fff; cursor:pointer;
+                                   width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M8 5v14l11-7z"/></svg>
+                    </button>
                     <button id="anim-next-frame" title="Next frame"
-                            style="background:none; border:none; color:#aaa; cursor:pointer; font-size:16px;">⏭</button>
-                    <div style="width:1px; height:20px; background:#333; margin:0 4px;"></div>
-                    <span style="color:#666; font-size:10px;">Frame</span>
-                    <span id="anim-frame-counter" style="color:#ccc; min-width:40px; text-align:center;">0 / 0</span>
+                            style="background:none; border:none; color:#a0a0ae; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:4px;">
+                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M18 6h-2v12h2zM4 6l11 6L4 18V6z"/></svg>
+                    </button>
+                    <div style="width:1px; height:18px; background:#2a2a2e; margin:0 4px;"></div>
+                    <span style="color:#5a5a64; font-size:10px;">Frame</span>
+                    <span id="anim-frame-counter" style="color:#e2e2e8; min-width:40px; text-align:center; font-size:10px;">0 / 0</span>
                 </div>
             </div>
 
             <!-- Frame strip -->
-            <div style="height:130px; background:#2a2a2a; border-top:2px solid #111;
+            <div style="height:130px; background:#1a1a1d; border-top:1px solid #2a2a2e;
                         display:flex; flex-direction:column; flex-shrink:0;">
-                <div style="display:flex; align-items:center; padding:4px 10px; background:#222;
-                            border-bottom:1px solid #111; gap:8px; flex-shrink:0;">
-                    <span style="color:#888; font-size:10px; font-weight:bold; letter-spacing:1px;">FRAMES</span>
+                <div style="display:flex; align-items:center; padding:5px 10px; background:#18181b;
+                            border-bottom:1px solid #2a2a2e; gap:8px; flex-shrink:0;">
+                    <span style="color:#a0a0ae; font-size:10px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase;">Frames</span>
                     <div style="flex:1;"></div>
-                    <span style="color:#666; font-size:10px;">Drag to reorder · Click to select · Del to remove</span>
+                    <span style="color:#5a5a64; font-size:10px;">Drag to reorder · Click to select · Del to remove</span>
                 </div>
                 <div id="anim-frame-strip" style="flex:1; overflow-x:auto; overflow-y:hidden;
                      display:flex; align-items:center; gap:6px; padding:6px 10px;"></div>
@@ -227,112 +234,112 @@ function _buildHTML(obj) {
         </div>
 
         <!-- RIGHT: Animation settings -->
-        <div style="width:220px; background:#242424; border-left:2px solid #111;
-                    display:flex; flex-direction:column; flex-shrink:0;">
-            <div style="padding:8px 10px; background:#1e1e1e; border-bottom:1px solid #111;
-                        font-weight:bold; color:#aaa; font-size:10px; letter-spacing:1px;">
-                SETTINGS
+        <div style="width:220px; background:#1a1a1d; border-left:1px solid #2a2a2e;
+                    display:flex; flex-direction:column; flex-shrink:0; overflow-y:auto;">
+            <div style="padding:8px 10px; background:#18181b; border-bottom:1px solid #2a2a2e;
+                        font-weight:600; color:#a0a0ae; font-size:10px; letter-spacing:0.6px; text-transform:uppercase;">
+                Settings
             </div>
             <div style="padding:12px; display:flex; flex-direction:column; gap:12px;">
 
                 <!-- Name -->
                 <div>
-                    <label style="color:#888; font-size:10px; display:block; margin-bottom:4px;">Name</label>
+                    <label style="color:#5a5a64; font-size:10px; display:block; margin-bottom:4px;">Name</label>
                     <input id="anim-name-input" type="text" placeholder="Animation name"
-                           style="width:100%; background:#1e1e1e; border:1px solid #333; color:#fff;
-                                  border-radius:3px; padding:5px 8px; font-size:12px; outline:none;">
+                           style="width:100%; background:#111113; border:1px solid #2a2a2e; color:#e2e2e8;
+                                  border-radius:3px; padding:5px 8px; font-size:11px; outline:none;">
                 </div>
 
                 <!-- FPS -->
                 <div>
-                    <label style="color:#888; font-size:10px; display:block; margin-bottom:4px;">
+                    <label style="color:#5a5a64; font-size:10px; display:block; margin-bottom:4px;">
                         Frames Per Second
                     </label>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <input id="anim-fps-slider" type="range" min="1" max="60" value="12"
-                               style="flex:1; accent-color:#3A72A5;">
-                        <span id="anim-fps-value" style="color:#fff; min-width:24px; text-align:right;">12</span>
+                               style="flex:1; accent-color:#3b82f6;">
+                        <span id="anim-fps-value" style="color:#e2e2e8; min-width:24px; text-align:right; font-size:11px;">12</span>
                     </div>
                 </div>
 
                 <!-- Loop -->
                 <div style="display:flex; align-items:center; gap:8px;">
                     <input id="anim-loop-check" type="checkbox" checked
-                           style="accent-color:#3A72A5; width:14px; height:14px;">
-                    <label for="anim-loop-check" style="color:#ccc; cursor:pointer;">Loop animation</label>
+                           style="accent-color:#3b82f6; width:14px; height:14px;">
+                    <label for="anim-loop-check" style="color:#a0a0ae; cursor:pointer; font-size:11px;">Loop animation</label>
                 </div>
 
                 <!-- Divider -->
-                <div style="border-top:1px solid #333;"></div>
+                <div style="border-top:1px solid #2a2a2e;"></div>
 
                 <!-- Stats -->
-                <div style="background:#1a1a1a; border-radius:4px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                <div style="background:#111113; border:1px solid #2a2a2e; border-radius:4px; padding:10px; display:flex; flex-direction:column; gap:6px;">
                     <div style="display:flex; justify-content:space-between;">
-                        <span style="color:#666;">Frames</span>
-                        <span id="anim-stat-frames" style="color:#aaa;">0</span>
+                        <span style="color:#5a5a64;">Frames</span>
+                        <span id="anim-stat-frames" style="color:#a0a0ae;">0</span>
                     </div>
                     <div style="display:flex; justify-content:space-between;">
-                        <span style="color:#666;">Duration</span>
-                        <span id="anim-stat-duration" style="color:#aaa;">0.00s</span>
+                        <span style="color:#5a5a64;">Duration</span>
+                        <span id="anim-stat-duration" style="color:#a0a0ae;">0.00s</span>
                     </div>
                     <div style="display:flex; justify-content:space-between;">
-                        <span style="color:#666;">Resolution</span>
-                        <span id="anim-stat-res" style="color:#aaa;">—</span>
+                        <span style="color:#5a5a64;">Resolution</span>
+                        <span id="anim-stat-res" style="color:#a0a0ae;">—</span>
                     </div>
                 </div>
 
                 <!-- Divider -->
-                <div style="border-top:1px solid #333;"></div>
+                <div style="border-top:1px solid #2a2a2e;"></div>
 
                 <!-- Apply to object -->
                 <button id="anim-apply-btn"
-                        style="background:#1e3a1e; border:1px solid #2a6a2a; color:#8f8;
-                               border-radius:3px; padding:7px; cursor:pointer; font-size:11px; width:100%;">
-                    ✔ Apply to Object
+                        style="background:#1a1a1d; border:1px solid #2a2a2e; color:#4ade80;
+                               border-radius:3px; padding:7px; cursor:pointer; font-size:10px; font-weight:500; width:100%;">
+                    Apply to Object
                 </button>
 
                 <!-- Delete animation -->
                 <button id="anim-delete-anim-btn"
-                        style="background:#3a1e1e; border:1px solid #6a2a2a; color:#f88;
-                               border-radius:3px; padding:6px; cursor:pointer; font-size:11px; width:100%;">
-                    🗑 Delete Animation
+                        style="background:#1a1a1d; border:1px solid #2a2a2e; color:#f87171;
+                               border-radius:3px; padding:6px; cursor:pointer; font-size:10px; font-weight:500; width:100%;">
+                    Delete Animation
                 </button>
 
                 <!-- ── Collision Shape Section ──────────── -->
-                <div style="border-top:1px solid #333; margin-top:4px;"></div>
+                <div style="border-top:1px solid #2a2a2e; margin-top:4px;"></div>
                 <div style="display:flex; align-items:center; justify-content:space-between;">
-                    <span style="color:#facc15; font-size:10px; font-weight:bold; letter-spacing:1px;">⬡ COLLISION</span>
+                    <span style="color:#a0a0ae; font-size:10px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase;">Collision</span>
                     <button id="anim-col-toggle-vis" title="Toggle collision overlay (C)"
-                            style="background:#facc1522;border:1px solid #facc1544;color:#facc15;
-                                   border-radius:3px;padding:2px 7px;cursor:pointer;font-size:9px;">👁 Show</button>
+                            style="background:#1a1a1d;border:1px solid #2a2a2e;color:#fbbf24;
+                                   border-radius:3px;padding:3px 8px;cursor:pointer;font-size:9px;font-weight:500;">Show</button>
                 </div>
 
                 <div id="anim-col-frame-info"
-                     style="background:#1a1400;border:1px solid #facc1533;border-radius:3px;
-                            padding:5px 7px;font-size:9px;color:#888;line-height:1.5;">
+                     style="background:#111113;border:1px solid #2a2a2e;border-radius:3px;
+                            padding:6px 8px;font-size:9px;color:#8a8a96;line-height:1.5;">
                     Select a frame below to edit its shape.
                 </div>
 
                 <div style="display:flex;flex-direction:column;gap:4px;">
                     <button id="anim-col-edit-frame"
-                            style="background:#7c3aed22;border:1px solid #7c3aed66;color:#a78bfa;
-                                   border-radius:3px;padding:5px 8px;cursor:pointer;font-size:10px;width:100%;">
-                        ✏ Edit This Frame's Shape
+                            style="background:#1a1a1d;border:1px solid #2a2a2e;color:#a78bfa;
+                                   border-radius:3px;padding:6px 8px;cursor:pointer;font-size:10px;font-weight:500;width:100%;">
+                        Edit This Frame's Shape
                     </button>
                     <button id="anim-col-edit-shared"
-                            style="background:#1e1a30;border:1px solid #3a3060;color:#7c6aaa;
-                                   border-radius:3px;padding:5px 8px;cursor:pointer;font-size:10px;width:100%;">
-                        ✏ Edit Shared Shape
+                            style="background:#1a1a1d;border:1px solid #2a2a2e;color:#a78bfa;
+                                   border-radius:3px;padding:6px 8px;cursor:pointer;font-size:10px;font-weight:500;width:100%;">
+                        Edit Shared Shape
                     </button>
                     <button id="anim-col-autofit"
-                            style="background:#06b6d422;border:1px solid #06b6d444;color:#67e8f9;
-                                   border-radius:3px;padding:5px 8px;cursor:pointer;font-size:10px;width:100%;">
-                        🎯 Auto-fit from Frame
+                            style="background:#1a1a1d;border:1px solid #2a2a2e;color:#67e8f9;
+                                   border-radius:3px;padding:6px 8px;cursor:pointer;font-size:10px;font-weight:500;width:100%;">
+                        Auto-fit from Frame
                     </button>
                     <button id="anim-col-copy-all"
-                            style="background:#1a1e1a;border:1px solid #3a4a3a;color:#6a9a6a;
-                                   border-radius:3px;padding:4px 8px;cursor:pointer;font-size:9px;width:100%;">
-                        📋 Copy Shape to All Frames
+                            style="background:#1a1a1d;border:1px solid #2a2a2e;color:#6a9a6a;
+                                   border-radius:3px;padding:5px 8px;cursor:pointer;font-size:9px;font-weight:500;width:100%;">
+                        Copy Shape to All Frames
                     </button>
                 </div>
             </div>
@@ -469,14 +476,14 @@ function _wire(modal, obj) {
             // Cannot delete the last animation — just clear frames (unless it's Idle)
             const anim = _currentAnim(obj);
             if (anim?.isIdle) {
-                _showToast(modal, '⚠ Cannot delete the Idle animation');
+                _showToast(modal, 'Cannot delete the Idle animation');
                 return;
             }
             if (anim) { anim.frames = []; _dirty = true; }
         } else {
             const anim = _currentAnim(obj);
             if (anim?.isIdle) {
-                _showToast(modal, '⚠ Cannot delete the Idle animation');
+                _showToast(modal, 'Cannot delete the Idle animation');
                 return;
             }
             obj.animations.splice(obj.activeAnimIndex, 1);
@@ -497,7 +504,7 @@ function _wire(modal, obj) {
     modal.querySelector('#anim-apply-btn').addEventListener('click', () => {
         _applyAnimToObject(obj);
         _dirty = true;
-        _showToast(modal, 'Animation applied ✔');
+        _showToast(modal, 'Animation applied');
     });
 
     // ── Collision section ────────────────────────────────────
@@ -514,16 +521,16 @@ function _wire(modal, obj) {
         if (editFrameBtn)  editFrameBtn.style.display  = 'none';
         if (copyAllBtn)    copyAllBtn.style.display    = 'none';
         if (editSharedBtn) {
-            editSharedBtn.style.background = '#7c3aed22';
-            editSharedBtn.style.border     = '1px solid #7c3aed66';
+            editSharedBtn.style.background = '#1a1a1d';
+            editSharedBtn.style.border     = '1px solid #2a2a2e';
             editSharedBtn.style.color      = '#a78bfa';
-            editSharedBtn.textContent      = '✏ Edit Collision Shape';
+            editSharedBtn.textContent      = 'Edit Collision Shape';
         }
         if (colFrameInfo) {
             colFrameInfo.style.display = 'block';
             colFrameInfo.innerHTML = `
-                <span style="color:#facc15;font-weight:bold;">🟡 Kinematic — one shared shape</span><br>
-                <span style="color:#888;">Movement uses this shape's bounding box.<br>Shape does not change per frame.</span>
+                <span style="color:#fbbf24;font-weight:600;">Kinematic — one shared shape</span><br>
+                <span style="color:#8a8a96;">Movement uses this shape's bounding box.<br>Shape does not change per frame.</span>
             `;
         }
     }
@@ -536,16 +543,16 @@ function _wire(modal, obj) {
         if (!info) return;
         if (!frame) {
             info.textContent = 'No frame selected.';
-            info.style.color = '#555';
+            info.style.color = '#5a5a64';
             return;
         }
         const polyMap = obj.physicsPolygons || {};
         const hasFr   = Array.isArray(polyMap[frame.id]) && polyMap[frame.id].length >= 3;
         const hasSh   = Array.isArray(polyMap.shared)    && polyMap.shared.length >= 3;
         info.innerHTML = `
-            <span style="color:#ccc;">Frame:</span> <span style="color:#a78bfa;">${frame.name}</span><br>
-            <span style="color:#${hasFr ? '4ade80' : '555'};">● Per-frame shape: ${hasFr ? 'defined ✓' : 'none (uses shared or AABB)'}</span><br>
-            <span style="color:#${hasSh ? '4ade80' : '555'};">● Shared shape: ${hasSh ? 'defined ✓' : 'none'}</span>
+            <span style="color:#a0a0ae;">Frame:</span> <span style="color:#a78bfa;">${frame.name}</span><br>
+            <span style="color:#${hasFr ? '4ade80' : '5a5a64'};">● Per-frame shape: ${hasFr ? 'defined ✓' : 'none (uses shared or AABB)'}</span><br>
+            <span style="color:#${hasSh ? '4ade80' : '5a5a64'};">● Shared shape: ${hasSh ? 'defined ✓' : 'none'}</span>
         `;
     };
 
@@ -556,7 +563,7 @@ function _wire(modal, obj) {
         import('./engine.collision-overlay.js').then(m => {
             m.setCollisionVisible(!state.showCollision);
             const btn = modal.querySelector('#anim-col-toggle-vis');
-            if (btn) btn.textContent = state.showCollision ? '👁 Hide' : '👁 Show';
+            if (btn) btn.textContent = state.showCollision ? 'Hide' : 'Show';
         });
     });
 
@@ -571,7 +578,7 @@ function _wire(modal, obj) {
     modal.querySelector('#anim-col-edit-frame')?.addEventListener('click', () => {
         const anim  = _currentAnim(obj);
         const frame = anim?.frames?.[currentFrame];
-        if (!frame) { _showToast(modal, '⚠ Select a frame first'); return; }
+        if (!frame) { _showToast(modal, 'Select a frame first'); return; }
         import('./engine.physics.js').then(m => m.openPolygonEditor(obj, frame.id, { onSave: _onPolySaved }));
         _dirty = true;
     });
@@ -584,19 +591,19 @@ function _wire(modal, obj) {
     modal.querySelector('#anim-col-autofit')?.addEventListener('click', () => {
         const anim  = _currentAnim(obj);
         const frame = anim?.frames?.[currentFrame];
-        if (!frame) { _showToast(modal, '⚠ Select a frame first'); return; }
+        if (!frame) { _showToast(modal, 'Select a frame first'); return; }
         if (isKinematicObj) {
             // Kinematic: auto-fit from this frame's image but save as shared shape
             _autoFitFromDataURL(obj, frame.dataURL, 'shared', () => {
                 _updateColFrameInfo();
-                _showToast(modal, '🎯 Shared shape auto-fitted from frame');
+                _showToast(modal, 'Shared shape auto-fitted from frame');
                 import('./engine.collision-overlay.js').then(m => m.refreshCollisionOverlay());
             });
         } else {
             // Dynamic: auto-fit per frame
             _autoFitFromDataURL(obj, frame.dataURL, frame.id, () => {
                 _updateColFrameInfo();
-                _showToast(modal, '🎯 Shape auto-fitted from frame');
+                _showToast(modal, 'Shape auto-fitted from frame');
                 import('./engine.collision-overlay.js').then(m => m.refreshCollisionOverlay());
             });
         }
@@ -612,7 +619,7 @@ function _wire(modal, obj) {
         const src   = (frame && polyMap[frame.id]?.length >= 3) ? polyMap[frame.id]
                     : polyMap.shared?.length >= 3 ? polyMap.shared
                     : null;
-        if (!src) { _showToast(modal, '⚠ No shape on this frame to copy'); return; }
+        if (!src) { _showToast(modal, 'No shape on this frame to copy'); return; }
         if (!obj.physicsPolygons) obj.physicsPolygons = {};
         obj.physicsPolygons.shared = src.map(p => ({ ...p }));
         const allAnims = obj.animations || [];
@@ -621,7 +628,7 @@ function _wire(modal, obj) {
         }));
         obj._polyUnit = 'container';
         _updateColFrameInfo();
-        _showToast(modal, '📋 Shape copied to all frames');
+        _showToast(modal, 'Shape copied to all frames');
         import('./engine.collision-overlay.js').then(m => m.refreshCollisionOverlay());
         _dirty = true;
     });
@@ -631,12 +638,15 @@ function _wire(modal, obj) {
     const prevBtn    = modal.querySelector('#anim-prev-frame');
     const nextBtn    = modal.querySelector('#anim-next-frame');
 
+    const PLAY_ICON  = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M8 5v14l11-7z"/></svg>';
+    const PAUSE_ICON = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+
     function _startPlay() {
         const anim = _currentAnim(obj);
         if (!anim || !anim.frames.length) return;
         isPlaying = true;
-        playBtn.textContent = '⏸';
-        playBtn.style.background = '#5a3a3a';
+        playBtn.innerHTML = PAUSE_ICON;
+        playBtn.style.background = '#f87171';
         const ms = 1000 / (anim.fps || 12);
         playInterval = setInterval(() => {
             currentFrame++;
@@ -650,8 +660,8 @@ function _wire(modal, obj) {
 
     function _stopPlay() {
         isPlaying = false;
-        playBtn.textContent = '▶';
-        playBtn.style.background = '#3A72A5';
+        playBtn.innerHTML = PLAY_ICON;
+        playBtn.style.background = '#3b82f6';
         clearInterval(playInterval);
         playInterval = null;
     }
@@ -736,20 +746,20 @@ function _renderAnimList(modal, obj) {
         const row = document.createElement('div');
         row.style.cssText = `
             padding: 8px 12px; cursor: pointer; display:flex; align-items:center; gap:6px;
-            background: ${isActive ? '#2D5C88' : isIdle ? 'rgba(74,222,128,0.05)' : 'transparent'};
-            border-left: 3px solid ${isActive ? '#3A72A5' : isIdle ? '#4ade80' : 'transparent'};
+            background: ${isActive ? '#0f2744' : isIdle ? 'rgba(74,222,128,0.05)' : 'transparent'};
+            border-left: 3px solid ${isActive ? '#3b82f6' : isIdle ? '#4ade80' : 'transparent'};
         `;
         row.innerHTML = `
             ${isIdle
                 ? `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:#4ade80;stroke-width:2;flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`
-                : `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:#aaa;stroke-width:2;flex-shrink:0;"><polygon points="5 3 19 12 5 21 5 3"/></svg>`
+                : `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:#8a8a96;stroke-width:2;flex-shrink:0;"><polygon points="5 3 19 12 5 21 5 3"/></svg>`
             }
-            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:${isActive ? '#fff' : isIdle ? '#8f8' : '#ccc'};">${anim.name}</span>
+            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:${isActive ? '#e2e2e8' : isIdle ? '#8ee0a8' : '#a0a0ae'};">${anim.name}</span>
             ${isIdle ? '<span style="font-size:8px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.3);border-radius:2px;padding:1px 4px;letter-spacing:0.5px;">IDLE</span>' : ''}
-            <span style="color:#555; font-size:9px;">${anim.frames.length}f</span>
+            <span style="color:#5a5a64; font-size:9px;">${anim.frames.length}f</span>
             ${stampedInAnim.length > 0
-                ? `<span title="${animSizeStr}" style="font-size:8px;color:${hasAnyMismatch ? '#f97316' : '#556'};background:${hasAnyMismatch ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.04)'};border:1px solid ${hasAnyMismatch ? '#f9731644' : '#333'};border-radius:2px;padding:1px 4px;letter-spacing:0.3px;white-space:nowrap;">
-                    ${hasAnyMismatch ? '⚠ ' : ''}${animSizeStr}
+                ? `<span title="${animSizeStr}" style="font-size:8px;color:${hasAnyMismatch ? '#fb923c' : '#5a5a64'};background:${hasAnyMismatch ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.04)'};border:1px solid ${hasAnyMismatch ? '#fb923c44' : '#2a2a2e'};border-radius:2px;padding:1px 4px;letter-spacing:0.3px;white-space:nowrap;">
+                    ${animSizeStr}
                   </span>`
                 : ''}
         `;
@@ -782,7 +792,7 @@ function _renderFrameStrip(modal, obj) {
 
     const anim = _currentAnim(obj);
     if (!anim || !anim.frames.length) {
-        strip.innerHTML = '<span style="color:#444; font-style:italic; padding:0 10px;">No frames — import images or a ZIP</span>';
+        strip.innerHTML = '<span style="color:#5a5a64; font-style:italic; padding:0 10px;">No frames — import images or a ZIP</span>';
         return;
     }
 
@@ -817,12 +827,12 @@ function _renderFrameStrip(modal, obj) {
     if (hasMismatch) {
         const sizes = [...sizeSet].join(', ');
         warningEl.style.cssText = `
-            background:#2a1000; border:1px solid #f97316; border-radius:4px;
+            background:#1f1410; border:1px solid #fb923c; border-radius:4px;
             padding:6px 10px; font-size:10px; color:#fb923c; line-height:1.5;
             margin-bottom:4px; display:block;
         `;
-        warningEl.innerHTML = `⚠️ <strong>Frame size mismatch:</strong> ${sizes}<br>
-            <span style="color:#f97316aa;">Frames with different canvas sizes can cause physics jitter when switching animations.
+        warningEl.innerHTML = `<strong>Frame size mismatch:</strong> ${sizes}<br>
+            <span style="color:#fb923caa;">Frames with different canvas sizes can cause physics jitter when switching animations.
             Export all frames at the same canvas size (with transparent padding if needed).</span>`;
     } else {
         warningEl.style.display = 'none';
@@ -840,25 +850,27 @@ function _renderFrameStrip(modal, obj) {
 
         cell.style.cssText = `
             flex-shrink: 0; width: 76px; height: 96px;
-            background: ${i === currentFrame ? '#2D4A6A' : '#1e1e1e'};
-            border: 2px solid ${isMismatch ? '#f97316' : (i === currentFrame ? '#3A72A5' : '#333')};
+            background: ${i === currentFrame ? '#0f2744' : '#1a1a1d'};
+            border: 2px solid ${isMismatch ? '#fb923c' : (i === currentFrame ? '#3b82f6' : '#2a2a2e')};
             border-radius: 4px; display:flex; flex-direction:column;
             align-items:center; cursor:pointer; position:relative;
             transition: border-color 0.1s;
         `;
 
         const sizeLabel = frame.w !== null
-            ? `<span style="font-size:8px; color:${isMismatch ? '#f97316' : '#555'}; line-height:1;">${frame.w}×${frame.h}</span>`
+            ? `<span style="font-size:8px; color:${isMismatch ? '#fb923c' : '#5a5a64'}; line-height:1;">${frame.w}×${frame.h}</span>`
             : '';
 
         cell.innerHTML = `
             <img src="${frame.dataURL}" style="width:64px; height:64px; object-fit:contain; margin-top:4px; image-rendering:pixelated;">
-            <span style="font-size:9px; color:#888; margin-top:2px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; width:70px; text-align:center;">${i + 1}. ${frame.name}</span>
+            <span style="font-size:9px; color:#8a8a96; margin-top:2px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; width:70px; text-align:center;">${i + 1}. ${frame.name}</span>
             ${sizeLabel}
             <button class="frame-del-btn" data-idx="${i}" title="Delete frame"
-                    style="position:absolute; top:2px; right:2px; background:#3a1a1a; border:1px solid #6a2a2a;
-                           color:#f88; border-radius:2px; width:16px; height:16px; cursor:pointer;
-                           font-size:10px; display:none; align-items:center; justify-content:center; padding:0;">✕</button>
+                    style="position:absolute; top:2px; right:2px; background:#1a1a1d; border:1px solid #2a2a2e;
+                           color:#f87171; border-radius:2px; width:16px; height:16px; cursor:pointer;
+                           display:none; align-items:center; justify-content:center; padding:0;">
+                <svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:2.5;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
         `;
 
         // Show/hide delete btn on hover
@@ -895,10 +907,10 @@ function _renderFrameStrip(modal, obj) {
         cell.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
-            cell.style.borderColor = '#FACC15';
+            cell.style.borderColor = '#fbbf24';
         });
         cell.addEventListener('dragleave', () => {
-            cell.style.borderColor = isMismatch ? '#f97316' : (i === currentFrame ? '#3A72A5' : '#333');
+            cell.style.borderColor = isMismatch ? '#fb923c' : (i === currentFrame ? '#3b82f6' : '#2a2a2e');
         });
         cell.addEventListener('drop', (e) => {
             e.preventDefault();
@@ -968,8 +980,8 @@ function _showFrame(modal, obj, idx) {
     // Highlight active cell
     modal.querySelectorAll('#anim-frame-strip > div').forEach((cell, i) => {
         const active = i === idx;
-        cell.style.background   = active ? '#2D4A6A' : '#1e1e1e';
-        cell.style.borderColor  = active ? '#3A72A5' : '#333';
+        cell.style.background   = active ? '#0f2744' : '#1a1a1d';
+        cell.style.borderColor  = active ? '#3b82f6' : '#2a2a2e';
     });
 }
 
@@ -1309,7 +1321,7 @@ function _drawCollisionOnCanvas(ctx, obj, frame, cvW, cvH) {
     // Label what source the shape is from
     if (obj.physicsBody && obj.physicsBody !== 'none') {
         const isFrameSpecific = frame.id && Array.isArray(polyMap[frame.id]) && polyMap[frame.id].length >= 3;
-        const label = isFrameSpecific ? '⬡ frame' : (polyMap.shared?.length >= 3 ? '⬡ shared' : '⬡ default');
+        const label = isFrameSpecific ? 'frame' : (polyMap.shared?.length >= 3 ? 'shared' : 'default');
         ctx.globalAlpha = 0.7;
         ctx.fillStyle   = col;
         ctx.font        = 'bold 8px monospace';
@@ -1331,8 +1343,8 @@ function _showToast(modal, msg) {
     const t = document.createElement('div');
     t.style.cssText = `
         position:absolute; bottom:160px; left:50%; transform:translateX(-50%);
-        background:#1e3a1e; border:1px solid #2a6a2a; color:#8f8;
-        border-radius:4px; padding:8px 20px; font-size:12px; z-index:10001;
+        background:#16241a; border:1px solid #2a6a2a; color:#8ee0a8;
+        border-radius:4px; padding:8px 20px; font-size:11px; z-index:10001;
         pointer-events:none; animation: fadeout 2s forwards;
     `;
     t.textContent = msg;
@@ -1343,8 +1355,8 @@ function _showToast(modal, msg) {
 function _showGlobalToast(msg) {
     const t = document.createElement('div');
     t.style.cssText = `position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
-        background:#3a1e1e; border:1px solid #6a2a2a; color:#f88;
-        border-radius:4px; padding:8px 20px; font-size:12px; z-index:10002;`;
+        background:#241616; border:1px solid #6a2a2a; color:#f87171;
+        border-radius:4px; padding:8px 20px; font-size:11px; z-index:10002;`;
     t.textContent = msg;
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 3000);
@@ -1358,23 +1370,23 @@ function _askPrefabSyncOnClose(obj) {
 
     const overlay = document.createElement('div');
     overlay.style.cssText = `
-        position:fixed; inset:0; z-index:20000; background:rgba(0,0,0,0.6);
+        position:fixed; inset:0; z-index:20000; background:rgba(13,13,15,0.7);
         display:flex; align-items:center; justify-content:center;
     `;
     overlay.innerHTML = `
-        <div style="background:#1a2535; border:1px solid #3A72A5; border-radius:6px;
-                    padding:24px 28px; max-width:380px; color:#e0e0e0; font-size:12px;
+        <div style="background:#1a1a1d; border:1px solid #2a2a2e; border-radius:6px;
+                    padding:24px 28px; max-width:380px; color:#e2e2e8; font-size:11px;
                     box-shadow:0 12px 40px rgba(0,0,0,0.8);">
-            <div style="font-size:14px; font-weight:bold; margin-bottom:10px; color:#fff;">
-                📦 Prefab: <span style="color:#9bc;">${prefab.name}</span>
+            <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:#e2e2e8;">
+                Prefab: <span style="color:#7cb9f0;">${prefab.name}</span>
             </div>
-            <div style="color:#aaa; margin-bottom:18px;">
+            <div style="color:#a0a0ae; margin-bottom:18px;">
                 You made animation changes on a prefab instance.<br>
                 Propagate these changes to other instances?
             </div>
             <div style="display:flex; gap:10px; justify-content:flex-end;">
-                <button id="ps-this" style="background:#1e2535; border:1px solid #445; color:#aaa; border-radius:4px; padding:7px 16px; cursor:pointer; font-size:11px;">This instance only</button>
-                <button id="ps-all"  style="background:#1e3a1e; border:1px solid #4a8a4a; color:#8f8; border-radius:4px; padding:7px 16px; cursor:pointer; font-size:11px;">Apply to ALL instances</button>
+                <button id="ps-this" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#a0a0ae; border-radius:4px; padding:7px 16px; cursor:pointer; font-size:10px; font-weight:500;">This instance only</button>
+                <button id="ps-all"  style="background:#1a1a1d; border:1px solid #2a6a2a; color:#4ade80; border-radius:4px; padding:7px 16px; cursor:pointer; font-size:10px; font-weight:500;">Apply to ALL instances</button>
             </div>
         </div>
     `;

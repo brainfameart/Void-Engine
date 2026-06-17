@@ -413,6 +413,10 @@ function _showContextMenu(screenX, screenY, obj) {
     const animSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
     const upSvg   = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polyline points="18 15 12 9 6 15"/></svg>`;
     const dnSvg   = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    const saveSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
+    const allSvg  = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 010 20 15.3 15.3 0 010-20z"/></svg>`;
+    const unlinkSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
+    const prefabSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
 
     menu.appendChild(row(editSvg, 'Rename', () => _inlineRenameObj(obj)));
     menu.appendChild(row(delSvg,  'Delete', () => deleteSelected(), '#f87171'));
@@ -420,11 +424,11 @@ function _showContextMenu(screenX, screenY, obj) {
     menu.appendChild(row(animSvg, 'Edit Animations…', () => import('./engine.animator.js').then(m => m.openAnimationEditor(obj)), '#9bc'));
     menu.appendChild(sep());
     if (isPrefab) {
-        menu.appendChild(row('💾', 'Apply to Prefab', () => import('./engine.prefabs.js').then(m => m.applyInstanceToPrefab(obj)), '#8f8'));
-        menu.appendChild(row('🌐', 'Apply to All',     () => import('./engine.prefabs.js').then(m => m.applyPrefabToAll(obj.prefabId, obj)), '#6fc'));
-        menu.appendChild(row('↗',  'Unlink from Prefab', () => import('./engine.prefabs.js').then(m => m.unlinkFromPrefab(obj)), '#facc15'));
+        menu.appendChild(row(saveSvg, 'Apply to Prefab', () => import('./engine.prefabs.js').then(m => m.applyInstanceToPrefab(obj)), '#8f8'));
+        menu.appendChild(row(allSvg, 'Apply to All',     () => import('./engine.prefabs.js').then(m => m.applyPrefabToAll(obj.prefabId, obj)), '#6fc'));
+        menu.appendChild(row(unlinkSvg,  'Unlink from Prefab', () => import('./engine.prefabs.js').then(m => m.unlinkFromPrefab(obj)), '#facc15'));
     } else {
-        menu.appendChild(row('📦', 'Save as Prefab', () => import('./engine.prefabs.js').then(m => { m.saveAsPrefab(obj); document.getElementById('tab-prefabs-btn')?.click(); }), '#9bc'));
+        menu.appendChild(row(prefabSvg, 'Save as Prefab', () => import('./engine.prefabs.js').then(m => { m.saveAsPrefab(obj); document.getElementById('tab-prefabs-btn')?.click(); }), '#9bc'));
     }
     menu.appendChild(sep());
     menu.appendChild(row(upSvg, 'Move Up (draw order)',   () => moveObjectUp(obj)));

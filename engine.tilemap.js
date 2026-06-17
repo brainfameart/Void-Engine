@@ -152,8 +152,8 @@ export function openTilemapEditor(obj) {
     const panel = document.createElement('div');
     panel.id = 'tm-editor';
     panel.style.cssText = `
-        position:fixed;inset:0;z-index:15000;background:rgba(0,0,0,0.92);
-        display:flex;font-family:'Inter','Segoe UI',sans-serif;font-size:11px;color:#d8d8e8;
+        position:fixed;inset:0;z-index:15000;background:rgba(13,13,15,0.92);
+        display:flex;font-family:'Inter','Segoe UI',sans-serif;font-size:11px;color:#e2e2e8;
     `;
 
     const d = obj.tilemapData;
@@ -162,21 +162,23 @@ export function openTilemapEditor(obj) {
     <div style="display:flex;width:100%;height:100%;">
 
       <!-- Left: Tileset + tools -->
-      <div style="width:260px;flex-shrink:0;background:#1a1a24;border-right:1px solid #2e2e3a;
+      <div style="width:260px;flex-shrink:0;background:#1a1a1d;border-right:1px solid #2a2a2e;
                   display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:12px 14px;border-bottom:1px solid #2e2e3a;display:flex;align-items:center;gap:8px;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:#3A72A5;stroke-width:2;">
+        <div style="padding:0 14px;height:36px;border-bottom:1px solid #2a2a2e;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#18181b;">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:#3b82f6;stroke-width:2;flex-shrink:0;">
             <rect x="3" y="3" width="18" height="18" rx="2"/>
             <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
             <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
           </svg>
-          <span style="font-weight:700;color:#fff;">Tilemap Editor</span>
+          <span style="font-weight:600;font-size:11px;letter-spacing:0.6px;text-transform:uppercase;color:#a0a0ae;">Tilemap Editor</span>
           <div style="flex:1;"></div>
-          <button id="tm-close" style="background:none;border:none;color:#666;cursor:pointer;font-size:16px;padding:2px 5px;">✕</button>
+          <button id="tm-close" style="background:none;border:none;color:#5a5a64;cursor:pointer;padding:2px 5px;display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
 
-        <div style="padding:10px 14px;border-bottom:1px solid #2e2e3a;flex-shrink:0;">
-          <div style="font-size:9px;font-weight:700;color:#505060;letter-spacing:.8px;margin-bottom:8px;">MAP SETTINGS</div>
+        <div style="padding:10px 14px;border-bottom:1px solid #2a2a2e;flex-shrink:0;">
+          <div style="font-size:9px;font-weight:600;color:#5a5a64;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;">Map Settings</div>
           <div class="tm-row"><span class="tm-lbl">Columns</span><input type="number" id="tm-cols" value="${d.cols}" min="1" max="512" class="tm-inp"></div>
           <div class="tm-row"><span class="tm-lbl">Rows</span><input type="number" id="tm-rows" value="${d.rows}" min="1" max="512" class="tm-inp"></div>
           <div class="tm-row"><span class="tm-lbl">Tile W</span><input type="number" id="tm-tw" value="${d.tileW}" min="4" max="512" class="tm-inp"></div>
@@ -187,20 +189,20 @@ export function openTilemapEditor(obj) {
               <option value="pixelated" ${d.filterMode==='pixelated'?'selected':''}>Pixelated</option>
             </select>
           </div>
-          <button id="tm-apply-settings" style="width:100%;margin-top:6px;background:#1e3050;border:1px solid #3A72A5;
-                  color:#7aabcc;border-radius:4px;padding:5px;cursor:pointer;font-size:10px;">Apply</button>
+          <button id="tm-apply-settings" style="width:100%;margin-top:6px;background:#1a1a1d;border:1px solid #2a2a2e;
+                  color:#7cb9f0;border-radius:3px;padding:6px;cursor:pointer;font-size:10px;font-weight:500;">Apply</button>
         </div>
 
-        <div style="padding:10px 14px;border-bottom:1px solid #2e2e3a;flex-shrink:0;">
-          <div style="font-size:9px;font-weight:700;color:#505060;letter-spacing:.8px;margin-bottom:8px;">TILESET</div>
-          <select id="tm-tileset-select" style="width:100%;background:#16161e;border:1px solid #3a3a48;
-                  color:#d8d8e8;border-radius:4px;padding:5px;font-size:10px;outline:none;">
+        <div style="padding:10px 14px;border-bottom:1px solid #2a2a2e;flex-shrink:0;">
+          <div style="font-size:9px;font-weight:600;color:#5a5a64;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;">Tileset</div>
+          <select id="tm-tileset-select" style="width:100%;background:#111113;border:1px solid #2a2a2e;
+                  color:#e2e2e8;border-radius:3px;padding:5px;font-size:10px;outline:none;">
             <option value="">— None —</option>
           </select>
         </div>
 
-        <div style="padding:10px 14px;border-bottom:1px solid #2e2e3a;flex-shrink:0;">
-          <div style="font-size:9px;font-weight:700;color:#505060;letter-spacing:.8px;margin-bottom:8px;">TOOLS</div>
+        <div style="padding:10px 14px;border-bottom:1px solid #2a2a2e;flex-shrink:0;">
+          <div style="font-size:9px;font-weight:600;color:#5a5a64;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;">Tools</div>
           <div style="display:flex;gap:4px;">
             <button class="tm-tool-btn tm-tool-active" data-tool="paint" title="Paint (B)">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
@@ -218,19 +220,19 @@ export function openTilemapEditor(obj) {
         </div>
 
         <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px;">
-          <div style="font-size:9px;font-weight:700;color:#505060;letter-spacing:.8px;margin-bottom:6px;">SELECT TILE <span id="tm-sel-tile-info" style="color:#7aabcc;font-weight:400;"></span></div>
-          <div style="flex:1;overflow:auto;background:#0e0e18;border-radius:4px;position:relative;">
+          <div style="font-size:9px;font-weight:600;color:#5a5a64;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px;">Select Tile <span id="tm-sel-tile-info" style="color:#7cb9f0;font-weight:400;text-transform:none;letter-spacing:0;"></span></div>
+          <div style="flex:1;overflow:auto;background:#111113;border:1px solid #2a2a2e;border-radius:4px;position:relative;">
             <canvas id="tm-tileset-canvas" style="display:block;cursor:crosshair;"></canvas>
             <canvas id="tm-tileset-overlay" style="position:absolute;inset:0;pointer-events:none;"></canvas>
           </div>
         </div>
       </div>
 
-      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0e0e18;">
-        <div style="padding:8px 14px;border-bottom:1px solid #1e1e2e;font-size:10px;color:#505060;
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#111113;">
+        <div style="padding:0 14px;height:36px;border-bottom:1px solid #2a2a2e;font-size:10px;color:#5a5a64;background:#18181b;
                     flex-shrink:0;display:flex;align-items:center;gap:10px;">
-          <span id="tm-cursor-info" style="color:#7a7a90;">Hover over map to paint</span>
-          <span style="margin-left:auto;color:#3a3a48;">B=Paint  E=Erase  F=Fill  I=Pick  Ctrl+Z=Undo</span>
+          <span id="tm-cursor-info" style="color:#8a8a96;">Hover over map to paint</span>
+          <span style="margin-left:auto;color:#3a3a42;">B=Paint  E=Erase  F=Fill  I=Pick  Ctrl+Z=Undo</span>
         </div>
         <div id="tm-canvas-wrap" style="flex:1;overflow:auto;padding:20px;display:flex;align-items:flex-start;justify-content:flex-start;">
           <div style="position:relative;display:inline-block;flex-shrink:0;">
@@ -243,15 +245,15 @@ export function openTilemapEditor(obj) {
 
     <style>
       .tm-row { display:flex;align-items:center;justify-content:space-between;margin-bottom:5px; }
-      .tm-lbl { color:#7a7a90;font-size:10px; }
-      .tm-inp { width:65px;background:#16161e;border:1px solid #3a3a48;color:#d8d8e8;
+      .tm-lbl { color:#8a8a96;font-size:10px; }
+      .tm-inp { width:65px;background:#111113;border:1px solid #2a2a2e;color:#e2e2e8;
                 border-radius:3px;padding:3px 5px;font-size:10px;outline:none;text-align:right; }
-      .tm-inp:focus { border-color:#3A72A5; }
-      .tm-tool-btn { background:#16161e;border:1px solid #2e2e3a;color:#606070;border-radius:4px;
+      .tm-inp:focus { border-color:#3b82f6; }
+      .tm-tool-btn { background:#111113;border:1px solid #2a2a2e;color:#5a5a64;border-radius:3px;
                      padding:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;
                      transition:all .1s; }
-      .tm-tool-btn:hover { border-color:#3A72A5;color:#9bc; }
-      .tm-tool-active { border-color:#3A72A5 !important;background:#1e3050 !important;color:#7aabcc !important; }
+      .tm-tool-btn:hover { border-color:#3b82f6;color:#7cb9f0; }
+      .tm-tool-active { border-color:#3b82f6 !important;background:#0f2744 !important;color:#7cb9f0 !important; }
     </style>
     `;
 
@@ -327,8 +329,8 @@ function _wireTilemapEditor(panel, obj) {
     function _drawTileset() {
         if (!tilesetImg) {
             tsCanvas.width = 200; tsCanvas.height = 60;
-            tsctx.fillStyle = '#0e0e18'; tsctx.fillRect(0,0,200,60);
-            tsctx.fillStyle = '#505060'; tsctx.font = '11px monospace';
+            tsctx.fillStyle = '#111113'; tsctx.fillRect(0,0,200,60);
+            tsctx.fillStyle = '#5a5a64'; tsctx.font = '11px monospace';
             tsctx.fillText('No tileset selected', 10, 36);
             tsOverlay.width = tsCanvas.width; tsOverlay.height = tsCanvas.height;
             return;
@@ -338,7 +340,7 @@ function _wireTilemapEditor(panel, obj) {
         tsOverlay.width = tilesetImg.width; tsOverlay.height = tilesetImg.height;
         _applySmoothness();
         tsctx.drawImage(tilesetImg, 0, 0);
-        tsctx.strokeStyle = 'rgba(58,114,165,0.4)'; tsctx.lineWidth = 0.5;
+        tsctx.strokeStyle = 'rgba(59,130,246,0.4)'; tsctx.lineWidth = 0.5;
         tsctx.beginPath();
         for (let c = 0; c <= d.tilesetCols; c++) {
             tsctx.moveTo(c * d.tileW, 0); tsctx.lineTo(c * d.tileW, tilesetImg.height);
@@ -395,12 +397,12 @@ function _wireTilemapEditor(panel, obj) {
                     col * d.tileW, row * d.tileH, d.tileW, d.tileH);
             }
         }
-        mctx.strokeStyle = 'rgba(58,114,165,0.18)'; mctx.lineWidth = 0.5;
+        mctx.strokeStyle = 'rgba(59,130,246,0.18)'; mctx.lineWidth = 0.5;
         mctx.beginPath();
         for (let c = 0; c <= d.cols; c++) { mctx.moveTo(c * d.tileW, 0); mctx.lineTo(c * d.tileW, mapCanvas.height); }
         for (let r = 0; r <= d.rows; r++) { mctx.moveTo(0, r * d.tileH); mctx.lineTo(mapCanvas.width, r * d.tileH); }
         mctx.stroke();
-        mctx.strokeStyle = 'rgba(58,114,165,0.6)'; mctx.lineWidth = 2;
+        mctx.strokeStyle = 'rgba(59,130,246,0.6)'; mctx.lineWidth = 2;
         mctx.strokeRect(0, 0, mapCanvas.width, mapCanvas.height);
     }
 

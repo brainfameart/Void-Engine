@@ -400,7 +400,7 @@ export function openAutoTileEditor(obj) {
 
     const panel = document.createElement('div');
     panel.id = 'autotile-editor-panel';
-    panel.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);font-family:sans-serif;font-size:13px;';
+    panel.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;background:rgba(13,13,15,0.92);font-family:'Inter','Segoe UI',system-ui,sans-serif;font-size:11px;color:#e2e2e8;";
 
     panel.innerHTML = _editorHTML(d);
     document.body.appendChild(panel);
@@ -416,9 +416,9 @@ function _editorHTML(d) {
 <div style="display:flex;width:100%;height:100%;overflow:hidden;">
 
   <!-- A: Brush Library -->
-  <div style="width:230px;min-width:180px;background:#0e0e1c;border-right:1px solid #1a1a30;display:flex;flex-direction:column;overflow:hidden;">
-    <div style="padding:10px 12px 8px;border-bottom:1px solid #1a1a30;display:flex;align-items:center;justify-content:space-between;">
-      <span style="color:#4ade80;font-weight:700;font-size:12px;">Brush Library</span>
+  <div style="width:230px;min-width:180px;background:#1a1a1d;border-right:1px solid #2a2a2e;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:0 12px;height:36px;background:#18181b;border-bottom:1px solid #2a2a2e;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span style="color:#a0a0ae;font-weight:600;font-size:10px;letter-spacing:0.6px;text-transform:uppercase;">Brush Library</span>
       <button id="at-new-brush" style="${BS('#4ade80')}">+ New</button>
     </div>
 
@@ -426,35 +426,35 @@ function _editorHTML(d) {
     <div id="at-brush-list" style="flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:3px;"></div>
 
     <!-- Active brushes on this tilemap -->
-    <div style="padding:8px 10px;border-top:1px solid #1a1a30;">
-      <div style="color:#555;font-size:9px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Active on map (paint order ↓)</div>
+    <div style="padding:8px 10px;border-top:1px solid #2a2a2e;">
+      <div style="color:#5a5a64;font-size:9px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Active on map (paint order &#8595;)</div>
       <div id="at-active-list" style="display:flex;flex-direction:column;gap:3px;max-height:120px;overflow-y:auto;"></div>
     </div>
   </div>
 
   <!-- B: Slot Editor -->
-  <div style="width:300px;min-width:250px;background:#0d0d1e;border-right:1px solid #1a1a30;display:flex;flex-direction:column;overflow:hidden;">
-    <div style="padding:10px 12px 6px;border-bottom:1px solid #1a1a30;">
-      <span style="color:#4ade80;font-weight:700;font-size:12px;">Slot Editor</span>
-      <div id="at-editing-label" style="color:#666;font-size:10px;margin-top:2px;">← Select a brush to edit</div>
+  <div style="width:300px;min-width:250px;background:#1a1a1d;border-right:1px solid #2a2a2e;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:0 12px;height:36px;background:#18181b;border-bottom:1px solid #2a2a2e;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;flex-shrink:0;">
+      <span style="color:#a0a0ae;font-weight:600;font-size:10px;letter-spacing:0.6px;text-transform:uppercase;">Slot Editor</span>
     </div>
+    <div id="at-editing-label" style="color:#5a5a64;font-size:10px;padding:6px 12px 0;">Select a brush to edit</div>
 
     <!-- Upload toolbar -->
     <div style="padding:6px 10px 4px;display:flex;gap:5px;">
       <button id="at-upload-pieces" style="${BS('#3b82f6')}flex:1;">Upload Tiles</button>
-      <button id="at-upload-sheet"  style="${BS('#7c3aed')}flex:1;">4×4 Sheet</button>
+      <button id="at-upload-sheet"  style="${BS('#a78bfa')}flex:1;">4&times;4 Sheet</button>
     </div>
 
     <!-- Gallery -->
     <div style="padding:0 10px 4px;">
       <div id="at-gallery" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;max-height:90px;overflow-y:auto;"></div>
-      <div id="at-gallery-empty" style="color:#444;font-size:10px;text-align:center;padding:4px 0;">Upload images to fill slots.</div>
+      <div id="at-gallery-empty" style="color:#5a5a64;font-size:10px;text-align:center;padding:4px 0;">Upload images to fill slots.</div>
     </div>
 
     <!-- Slot mode -->
     <div style="padding:0 10px 5px;display:flex;gap:5px;">
-      <button id="at-mode-drag"  style="${TBTN(true)}flex:1;">✦ Drag</button>
-      <button id="at-mode-erase" style="${TBTN(false)}flex:1;">✕ Erase px</button>
+      <button id="at-mode-drag"  style="${TBTN(true)}flex:1;">Drag</button>
+      <button id="at-mode-erase" style="${TBTN(false)}flex:1;">Erase Pixels</button>
     </div>
 
     <!-- 16-slot grid -->
@@ -463,8 +463,8 @@ function _editorHTML(d) {
     </div>
 
     <!-- Guide toggle -->
-    <div style="padding:6px 10px;border-top:1px solid #1a1a30;">
-      <button id="at-guide-toggle" style="${BS('#444')}font-size:10px;width:100%;">Grid Guides: ON</button>
+    <div style="padding:6px 10px;border-top:1px solid #2a2a2e;">
+      <button id="at-guide-toggle" style="${BS('#8a8a96')}font-size:10px;width:100%;">Grid Guides: ON</button>
     </div>
 
     <input id="at-file-pieces" type="file" multiple accept="image/*" style="display:none;">
@@ -472,44 +472,44 @@ function _editorHTML(d) {
   </div>
 
   <!-- C: Map Painter -->
-  <div style="flex:1;background:#08080f;display:flex;flex-direction:column;overflow:hidden;">
+  <div style="flex:1;background:#111113;display:flex;flex-direction:column;overflow:hidden;">
 
     <!-- Toolbar -->
-    <div style="padding:8px 12px;border-bottom:1px solid #1a1a30;display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0;">
-      <span style="color:#4ade80;font-weight:700;font-size:12px;">Map Painter</span>
+    <div style="padding:0 12px;height:36px;background:#18181b;border-bottom:1px solid #2a2a2e;display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0;">
+      <span style="color:#a0a0ae;font-weight:600;font-size:10px;letter-spacing:0.6px;text-transform:uppercase;">Map Painter</span>
 
       <!-- Active brush selector for painting -->
-      <div style="display:flex;align-items:center;gap:5px;background:#111;border:1px solid #1a1a30;border-radius:4px;padding:3px 8px;">
-        <span style="color:#666;font-size:10px;">Paint with:</span>
+      <div style="display:flex;align-items:center;gap:5px;background:#111113;border:1px solid #2a2a2e;border-radius:3px;padding:3px 8px;">
+        <span style="color:#5a5a64;font-size:10px;">Paint with:</span>
         <select id="at-paint-brush" style="${SEL()}width:120px;">
           <option value="">— all active —</option>
         </select>
       </div>
 
       <!-- Map draw mode -->
-      <button id="at-map-paint" style="${TBTN(true)}">✏ Paint</button>
-      <button id="at-map-erase" style="${TBTN(false)}">✕ Erase Layer</button>
-      <button id="at-map-erase-all" style="${TBTN(false)}">✕✕ Erase All</button>
+      <button id="at-map-paint" style="${TBTN(true)}">Paint</button>
+      <button id="at-map-erase" style="${TBTN(false)}">Erase Layer</button>
+      <button id="at-map-erase-all" style="${TBTN(false)}">Erase All</button>
 
-      <span style="color:#333;font-size:11px;">|</span>
-      <label style="color:#777;font-size:11px;">Cols <input id="at-cols" type="number" value="${d.cols}" min="5" max="80" style="width:40px;${NI()}"></label>
-      <label style="color:#777;font-size:11px;">Rows <input id="at-rows" type="number" value="${d.rows}" min="5" max="60" style="width:40px;${NI()}"></label>
-      <label style="color:#777;font-size:11px;">Tile <input id="at-tileW" type="number" value="${d.tileW}" min="8" max="128" style="width:40px;${NI()}">px</label>
+      <span style="color:#2a2a2e;font-size:11px;">|</span>
+      <label style="color:#8a8a96;font-size:10px;">Cols <input id="at-cols" type="number" value="${d.cols}" min="5" max="80" style="width:40px;${NI()}"></label>
+      <label style="color:#8a8a96;font-size:10px;">Rows <input id="at-rows" type="number" value="${d.rows}" min="5" max="60" style="width:40px;${NI()}"></label>
+      <label style="color:#8a8a96;font-size:10px;">Tile <input id="at-tileW" type="number" value="${d.tileW}" min="8" max="128" style="width:40px;${NI()}">px</label>
       <button id="at-apply-size" style="${BS('#3b82f6')}">Apply</button>
-      <button id="at-clear-map"  style="${BS('#ef4444')}">Clear All</button>
-      <button id="at-close"      style="${BS('#555')}margin-left:auto;">✕ Close</button>
+      <button id="at-clear-map"  style="${BS('#f87171')}">Clear All</button>
+      <button id="at-close"      style="${BS('#8a8a96')}margin-left:auto;">Close</button>
     </div>
 
     <!-- Canvas -->
     <div style="flex:1;overflow:auto;padding:16px;">
       <canvas id="at-map-canvas"
-        style="cursor:crosshair;image-rendering:pixelated;box-shadow:0 0 0 1px #1a1a30,0 4px 24px #000c;"
+        style="cursor:crosshair;image-rendering:pixelated;box-shadow:0 0 0 1px #2a2a2e,0 4px 24px rgba(0,0,0,0.8);"
         oncontextmenu="return false;"></canvas>
     </div>
 
     <!-- Legend: layer visibility -->
-    <div style="padding:5px 12px;border-top:1px solid #1a1a30;display:flex;align-items:center;gap:10px;flex-shrink:0;">
-      <span style="color:#333;font-size:10px;">Left-click: paint layer  •  Right-click: erase active brush layer  •  Hold &amp; drag</span>
+    <div style="padding:5px 12px;border-top:1px solid #2a2a2e;display:flex;align-items:center;gap:10px;flex-shrink:0;">
+      <span style="color:#5a5a64;font-size:10px;">Left-click: paint layer  •  Right-click: erase active brush layer  •  Hold &amp; drag</span>
       <div id="at-layer-legend" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;"></div>
     </div>
   </div>
@@ -520,12 +520,12 @@ function _editorHTML(d) {
 // Style helpers
 // ─────────────────────────────────────────────────────────────
 
-const BS   = c => `background:${c}22;border:1px solid ${c}55;color:${c};border-radius:3px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:600;`;
+const BS   = c => `background:#1a1a1d;border:1px solid #2a2a2e;color:${c};border-radius:3px;padding:5px 10px;cursor:pointer;font-size:10px;font-weight:500;`;
 const TBTN = a => a
-    ? `background:#162816;border:1px solid #4ade80;color:#4ade80;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;`
-    : `background:#0a0a18;border:1px solid #1a1a30;color:#555;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:600;`;
-const NI   = () => `background:#0a0a18;border:1px solid #1a1a30;color:#e0e0e0;border-radius:3px;padding:2px 4px;font-size:11px;`;
-const SEL  = () => `background:#0a0a18;border:1px solid #1a1a30;color:#e0e0e0;border-radius:3px;padding:2px 4px;font-size:11px;`;
+    ? `background:#0f2744;border:1px solid #3b82f6;color:#7cb9f0;border-radius:3px;padding:5px 10px;cursor:pointer;font-size:10px;font-weight:600;`
+    : `background:#1a1a1d;border:1px solid #2a2a2e;color:#5a5a64;border-radius:3px;padding:5px 10px;cursor:pointer;font-size:10px;font-weight:500;`;
+const NI   = () => `background:#111113;border:1px solid #2a2a2e;color:#e2e2e8;border-radius:3px;padding:3px 5px;font-size:10px;`;
+const SEL  = () => `background:#111113;border:1px solid #2a2a2e;color:#e2e2e8;border-radius:3px;padding:3px 5px;font-size:10px;`;
 
 // ─────────────────────────────────────────────────────────────
 // Editor wiring
@@ -597,7 +597,7 @@ function _wireEditor(panel, obj) {
     // ── Render one cell onto the canvas ──
     function renderCell(col, row) {
         const x = col * tileW, y = row * tileH;
-        mapCtx.fillStyle = (row + col) % 2 === 0 ? '#0c0c1a' : '#090916';
+        mapCtx.fillStyle = (row + col) % 2 === 0 ? '#1a1a1d' : '#161618';
         mapCtx.fillRect(x, y, tileW, tileH);
 
         const layers = _getLayers(cells, row * mapCols + col);
@@ -739,7 +739,7 @@ function _wireEditor(panel, obj) {
             if (!b) return;
             const hue  = _strHue(bid);
             const chip = document.createElement('div');
-            chip.style.cssText = `display:flex;align-items:center;gap:3px;font-size:9px;color:#aaa;`;
+            chip.style.cssText = `display:flex;align-items:center;gap:3px;font-size:9px;color:#a0a0ae;`;
             chip.innerHTML = `<span style="width:10px;height:10px;border-radius:2px;background:hsla(${hue},70%,55%,0.7);display:inline-block;"></span>${b.name}`;
             leg.appendChild(chip);
         });
@@ -754,7 +754,7 @@ function _wireEditor(panel, obj) {
         activeEl.innerHTML = '';
 
         if (!state.tilesetBrushes.length) {
-            listEl.innerHTML = '<div style="color:#444;font-size:10px;text-align:center;padding:10px;">No brushes yet.</div>';
+            listEl.innerHTML = '<div style="color:#5a5a64;font-size:10px;text-align:center;padding:10px;">No brushes yet.</div>';
         }
 
         state.tilesetBrushes.forEach(b => {
@@ -763,15 +763,16 @@ function _wireEditor(panel, obj) {
 
             // Library row
             const row = document.createElement('div');
-            row.style.cssText = `display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:3px;cursor:pointer;border:1px solid ${isSelected ? '#4ade80' : '#1a1a30'};background:${isSelected ? '#162816' : '#111'};`;
+            row.style.cssText = `display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:3px;cursor:pointer;border:1px solid ${isSelected ? '#4ade80' : '#2a2a2e'};background:${isSelected ? 'rgba(74,222,128,0.08)' : '#111113'};`;
 
             const nm = document.createElement('span');
-            nm.style.cssText = 'flex:1;color:#ccc;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            nm.style.cssText = 'flex:1;color:#c8c8d0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             nm.textContent   = b.name;
 
             const renBtn = document.createElement('button');
-            renBtn.textContent = '✎'; renBtn.title = 'Rename';
-            renBtn.style.cssText = BS('#888') + 'padding:1px 4px;font-size:10px;';
+            renBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            renBtn.title = 'Rename';
+            renBtn.style.cssText = BS('#8a8a96') + 'padding:3px 5px;display:flex;align-items:center;justify-content:center;';
             renBtn.addEventListener('click', ev => {
                 ev.stopPropagation();
                 const n = prompt('Rename brush:', b.name);
@@ -779,13 +780,15 @@ function _wireEditor(panel, obj) {
             });
 
             const editBtn = document.createElement('button');
-            editBtn.textContent = '✏'; editBtn.title = 'Edit slots';
-            editBtn.style.cssText = BS('#4ade80') + 'padding:1px 4px;font-size:10px;';
+            editBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+            editBtn.title = 'Edit slots';
+            editBtn.style.cssText = BS('#4ade80') + 'padding:3px 5px;display:flex;align-items:center;justify-content:center;';
             editBtn.addEventListener('click', ev => { ev.stopPropagation(); selectBrush(b.id); });
 
             const delBtn = document.createElement('button');
-            delBtn.textContent = '✕'; delBtn.title = 'Delete';
-            delBtn.style.cssText = BS('#ef4444') + 'padding:1px 4px;font-size:10px;';
+            delBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:2;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            delBtn.title = 'Delete';
+            delBtn.style.cssText = BS('#f87171') + 'padding:3px 5px;display:flex;align-items:center;justify-content:center;';
             delBtn.addEventListener('click', ev => {
                 ev.stopPropagation();
                 if (!confirm(`Delete brush "${b.name}"?`)) return;
@@ -827,7 +830,7 @@ function _wireEditor(panel, obj) {
             dot.style.cssText = `width:8px;height:8px;border-radius:2px;background:hsla(${hue},70%,55%,0.8);flex-shrink:0;`;
 
             const lbl = document.createElement('span');
-            lbl.style.cssText = 'color:#aaa;font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            lbl.style.cssText = 'color:#a0a0ae;font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             lbl.textContent   = b.name;
 
             aRow.appendChild(chk); aRow.appendChild(dot); aRow.appendChild(lbl);
@@ -842,7 +845,7 @@ function _wireEditor(panel, obj) {
     function selectBrush(id) {
         activeBrushId = id;
         const b = _getBrush(id);
-        panel.querySelector('#at-editing-label').textContent = b ? `Editing: ${b.name}` : '← Select a brush to edit';
+        panel.querySelector('#at-editing-label').textContent = b ? `Editing: ${b.name}` : 'Select a brush to edit';
         gallery = b ? b.tiles.filter(Boolean) : [];
         buildSlotGrid(b);
         refreshGallery();
@@ -869,7 +872,7 @@ function _wireEditor(panel, obj) {
         const grid = panel.querySelector('#at-slot-grid');
         grid.innerHTML = '';
         if (!brush) {
-            grid.innerHTML = '<div style="color:#444;font-size:11px;text-align:center;padding:16px;">Select a brush to edit its tile slots.</div>';
+            grid.innerHTML = '<div style="color:#5a5a64;font-size:11px;text-align:center;padding:16px;">Select a brush to edit its tile slots.</div>';
             return;
         }
 
@@ -878,7 +881,7 @@ function _wireEditor(panel, obj) {
             rowEl.style.cssText = 'display:flex;gap:4px;';
             rowIds.forEach(slotId => {
                 const cell = document.createElement('div');
-                cell.style.cssText = `width:52px;height:52px;background:#0c0c1a;border:1px solid ${guidesOn ? '#1a1a30' : 'transparent'};border-radius:3px;position:relative;overflow:hidden;cursor:pointer;box-sizing:border-box;flex-shrink:0;`;
+                cell.style.cssText = `width:52px;height:52px;background:#111113;border:1px solid ${guidesOn ? '#2a2a2e' : 'transparent'};border-radius:3px;position:relative;overflow:hidden;cursor:pointer;box-sizing:border-box;flex-shrink:0;`;
 
                 if (brush.tiles[slotId]) {
                     const cvs = document.createElement('canvas');
@@ -890,8 +893,8 @@ function _wireEditor(panel, obj) {
 
                     if (slotMode === 'drag') {
                         const clrBtn = document.createElement('div');
-                        clrBtn.style.cssText = 'display:none;position:absolute;top:0;right:0;background:#ef4444;color:#fff;padding:2px 4px;border-bottom-left-radius:3px;cursor:pointer;font-size:9px;line-height:1;';
-                        clrBtn.textContent   = '✕';
+                        clrBtn.style.cssText = 'display:none;position:absolute;top:0;right:0;background:#f87171;color:#1a1a1d;padding:2px 4px;border-bottom-left-radius:3px;cursor:pointer;font-size:9px;line-height:1;align-items:center;justify-content:center;';
+                        clrBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:8px;height:8px;fill:none;stroke:currentColor;stroke-width:3;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
                         clrBtn.addEventListener('click', ev => {
                             ev.stopPropagation();
                             brush.tiles[slotId] = null;
@@ -900,13 +903,13 @@ function _wireEditor(panel, obj) {
                             renderMap();
                         });
                         cell.appendChild(clrBtn);
-                        cell.addEventListener('mouseenter', () => { clrBtn.style.display = 'block'; });
+                        cell.addEventListener('mouseenter', () => { clrBtn.style.display = 'flex'; });
                         cell.addEventListener('mouseleave', () => { clrBtn.style.display = 'none'; });
                     }
                 }
 
                 const lbl = document.createElement('div');
-                lbl.style.cssText = 'position:absolute;bottom:1px;left:2px;color:#333;font-size:7px;pointer-events:none;';
+                lbl.style.cssText = 'position:absolute;bottom:1px;left:2px;color:#3a3a42;font-size:7px;pointer-events:none;';
                 lbl.textContent   = `S${slotId}`;
                 cell.appendChild(lbl);
 
@@ -983,7 +986,7 @@ function _wireEditor(panel, obj) {
         gallery.forEach(url => {
             const item = document.createElement('div');
             item.draggable = true;
-            item.style.cssText = 'aspect-ratio:1;background:#090916;border:1px solid #1a1a30;border-radius:3px;overflow:hidden;cursor:grab;';
+            item.style.cssText = 'aspect-ratio:1;background:#111113;border:1px solid #2a2a2e;border-radius:3px;overflow:hidden;cursor:grab;';
             const img = document.createElement('img');
             img.src = url; img.style.cssText = 'width:100%;height:100%;object-fit:cover;pointer-events:none;';
             item.appendChild(img);

@@ -165,15 +165,15 @@ function initMenus() {
         fileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleMenu(fileBtn, [
-                { label: '🆕  New Project',      action: () => newProject() },
+                { label: 'New Project',      action: () => newProject() },
                 { separator: true },
-                { label: '💾  Save Project (.zen)…', action: () => saveProject() },
-                { label: '📂  Load Project (.zen)…', action: () => loadProject() },
+                { label: 'Save Project (.zen)…', action: () => saveProject() },
+                { label: 'Load Project (.zen)…', action: () => loadProject() },
                 { separator: true },
-                { label: '🗑️  Clear Saved Session', action: async () => {
+                { label: 'Clear Saved Session', action: async () => {
                     if (!confirm('Clear the auto-saved session? This cannot be undone.\nYour current work will remain open until you refresh.')) return;
                     await clearPersisted();
-                    _logConsole('🗑️ Saved session cleared', '#f87171');
+                    _logConsole('Saved session cleared', '#f87171');
                 }},
             ]);
         });
@@ -185,14 +185,14 @@ function initMenus() {
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleMenu(editBtn, [
-                { label: '↩  Undo          Ctrl+Z', action: undo },
-                { label: '↪  Redo          Ctrl+Y', action: redo },
+                { label: 'Undo          Ctrl+Z', action: undo },
+                { label: 'Redo          Ctrl+Y', action: redo },
                 { separator: true },
-                { label: '⎘  Copy          Ctrl+C', action: () => _copySelected() },
-                { label: '⎗  Paste         Ctrl+V', action: () => _pasteObject() },
+                { label: 'Copy          Ctrl+C', action: () => _copySelected() },
+                { label: 'Paste         Ctrl+V', action: () => _pasteObject() },
                 { separator: true },
-                { label: '🗑  Delete        Del',    action: () => import('./engine.objects.js').then(m => m.deleteSelected()) },
-                { label: '✕  Deselect All',          action: () => import('./engine.objects.js').then(m => m.selectObject(null)) },
+                { label: 'Delete        Del',    action: () => import('./engine.objects.js').then(m => m.deleteSelected()) },
+                { label: 'Deselect All',          action: () => import('./engine.objects.js').then(m => m.selectObject(null)) },
             ]);
         });
     }
@@ -232,7 +232,7 @@ function initMenus() {
                     }
                 },
                 { separator: true },
-                { label: '⊞  Reset Layout', action: () => {
+                { label: 'Reset Layout', action: () => {
                     if (hierarchy) hierarchy.style.display = '';
                     if (inspector) inspector.style.display = '';
                     if (bottom)    bottom.style.display    = '';
@@ -248,7 +248,7 @@ function initMenus() {
             e.stopPropagation();
             toggleMenu(assetsBtn, [
                 {
-                    label: '📁 Import Asset…',
+                    label: 'Import Asset…',
                     action: () => {
                         document.getElementById('asset-file-input')?.click();
                     }
@@ -363,7 +363,7 @@ function initMenus() {
         goBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const lightItems = Object.entries(LIGHT_TYPES).map(([type, def]) => ({
-                label: `${def.icon}  ${def.label}`,
+                label: def.label,
                 action: () => createLight(type),
             }));
             toggleMenu(goBtn, [
@@ -372,11 +372,11 @@ function initMenus() {
                 { separator: true },
                 { label: '── World ──', disabled: true },
                 {
-                    label: '▦  Tilemap',
+                    label: 'Tilemap',
                     action: () => createTilemap(),
                 },
                 {
-                    label: '▣  Auto Tilemap',
+                    label: 'Auto Tilemap',
                     action: () => createAutoTilemap(),
                 },
             ]);

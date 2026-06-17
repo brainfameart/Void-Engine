@@ -401,14 +401,13 @@ body, html {
     opacity: 0.5;
 }
 
-.panel--inspector .panel-header::before { background: var(--purple); }
-
 .panel-header-icon {
     width: 12px; height: 12px;
     fill: none; stroke: var(--accent);
     stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
 .panel--inspector .panel-header-icon { stroke: var(--purple); }
+.panel--inspector .panel-header::before { display: none; }
 
 /* ── Hierarchy ─────────────────────────────────────────────── */
 .hierarchy-search {
@@ -565,13 +564,6 @@ body, html {
     color: var(--text);
     border-bottom: 1px solid var(--bg-panel);
     margin-bottom: -1px;
-}
-.vtab--active::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: var(--accent);
 }
 .vtab:hover:not(.vtab--active) {
     background: var(--bg-hover);
