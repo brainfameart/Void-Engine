@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Zengine — Game Engine</title>
+    <title>Zengine</title>
     <!--
       ┌─ OFFLINE SWAP ──────────────────────────────────────────────────────────┐
       │  To run without internet:                                               │
@@ -26,11 +26,6 @@
       └─────────────────────────────────────────────────────────────────────────┘
     -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -41,9 +36,8 @@
 <!-- ── Menu Bar ── -->
 <div class="menu-bar">
     <div class="menu-logo">
-        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:#3b82f6;stroke-width:2;"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="8.5" x2="22" y2="8.5"/><line x1="2" y1="15.5" x2="22" y2="15.5"/></svg>
-        <span style="font-weight:700;letter-spacing:1.5px;font-size:11px;text-transform:uppercase;">ZENGINE</span>
-        <span style="font-size:9px;color:#3b82f6;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);border-radius:3px;padding:1px 5px;font-weight:600;letter-spacing:0.3px;">2D</span>
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:#3A72A5;stroke-width:2;"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="8.5" x2="22" y2="8.5"/><line x1="2" y1="15.5" x2="22" y2="15.5"/></svg>
+        <span style="font-weight:700;color:#ccd;letter-spacing:.5px;font-size:12px;">ZENGINE</span>
     </div>
     <div class="menu-items">
         <span class="menu-item" id="menu-file">File</span>
@@ -60,10 +54,10 @@
     <div class="toolbar-left">
         <div class="tool-group">
             <button class="tool-btn" id="btn-undo" title="Undo (Ctrl+Z)">
-                <i data-lucide="undo-2" style="width:13px;height:13px;stroke:currentColor;stroke-width:1.8;"></i>
+                <svg viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M3 13A9 9 0 1 0 6 6.3"/></svg>
             </button>
             <button class="tool-btn" id="btn-redo" title="Redo (Ctrl+Y)">
-                <i data-lucide="redo-2" style="width:13px;height:13px;stroke:currentColor;stroke-width:1.8;"></i>
+                <svg viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M21 13A9 9 0 1 1 18 6.3"/></svg>
             </button>
         </div>
         <div class="tool-divider"></div>
@@ -99,14 +93,20 @@
     <!-- Right: scene picker + gizmo mode -->
     <div class="toolbar-right">
         <span id="persist-status" style="font-size:9px;color:#6a9a6a;opacity:0.8;white-space:nowrap;pointer-events:none;"></span>
-        <button id="btn-export-game" title="Export game as playable zip">
-            <i class="fa-solid fa-box-archive" style="font-size:10px;"></i> Export
+        <button id="btn-export-game" title="Export game as playable zip"
+            style="background:#2D2D2D;border:1px solid #424242;color:#9D9D9D;
+                   border-radius:2px;padding:3px 10px;cursor:pointer;font-size:10px;font-weight:600;
+                   letter-spacing:0.3px;white-space:nowrap;display:flex;align-items:center;gap:4px;
+                   transition:background .1s,color .1s,border-color .1s;"
+            onmouseover="this.style.background='#2C5F8A';this.style.color='#fff';this.style.borderColor='#2C5F8A';"
+            onmouseout="this.style.background='#2D2D2D';this.style.color='#9D9D9D';this.style.borderColor='#424242';">
+            ▤ Export
         </button>
         <div class="tool-divider"></div>
         <button id="scene-switcher-btn" class="scene-btn">
-            <i data-lucide="layout-grid" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
             <span id="scene-btn-label">Scene 1</span>
-            <i data-lucide="chevron-down" style="width:10px;height:10px;stroke:currentColor;stroke-width:2.5;flex-shrink:0;"></i>
+            <svg viewBox="0 0 24 24" style="width:10px;height:10px;fill:currentColor;"><path d="M7 10l5 5 5-5z"/></svg>
         </button>
         <div class="tool-divider"></div>
         <!-- Collision visibility toggle -->
@@ -120,7 +120,7 @@
             <span id="collision-toggle-badge" style="
                 display:none;position:absolute;top:3px;right:3px;
                 width:6px;height:6px;border-radius:50%;
-                background:var(--yellow,#facc15);box-shadow:0 0 4px var(--yellow,#facc15);
+                background:#facc15;box-shadow:0 0 4px #facc15;
             "></span>
         </button>
         <!-- Grid visibility toggle -->
@@ -136,7 +136,7 @@
             <span id="grid-toggle-badge" style="
                 display:block;position:absolute;top:3px;right:3px;
                 width:6px;height:6px;border-radius:50%;
-                background:var(--green,#4ade80);box-shadow:0 0 4px var(--green,#4ade80);
+                background:#6adf88;box-shadow:0 0 4px #6adf88;
             "></span>
         </button>
         <div class="tool-divider"></div>
@@ -158,7 +158,7 @@
     <!-- Hierarchy -->
     <div id="panel-hierarchy" class="panel panel--hierarchy">
         <div class="panel-header">
-            <i data-lucide="layers" style="width:12px;height:12px;stroke:#3b82f6;stroke-width:2;"></i>
+            <svg viewBox="0 0 24 24" class="panel-header-icon"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
             <span>Hierarchy</span>
         </div>
         <div class="hierarchy-search">
@@ -166,8 +166,8 @@
             <input type="text" placeholder="Search…" id="hierarchy-search-input">
         </div>
         <div class="hierarchy-scene-root">
-            <i data-lucide="layout" style="width:12px;height:12px;stroke:#3b82f6;stroke-width:2;flex-shrink:0;"></i>
-            <span id="hierarchy-scene-label" style="color:var(--accent-bright);font-weight:600;">Scene 1</span>
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:#3A72A5;stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span id="hierarchy-scene-label" style="color:#7aabcc;font-weight:600;">Scene 1</span>
             <button id="btn-add-text" title="Add Text Object" style="margin-left:auto;background:rgba(250,204,21,0.12);border:1px solid rgba(250,204,21,0.35);color:#facc15;border-radius:3px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:monospace;letter-spacing:0.3px;line-height:16px;">T+</button>
         </div>
         <div id="hierarchy-list" class="hierarchy-list"></div>
@@ -178,7 +178,7 @@
     <div class="viewport-col">
         <div class="viewport-tabs">
             <div class="vtab vtab--active">
-                <i data-lucide="camera" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
+                <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                 Scene
             </div>
         </div>
@@ -207,15 +207,15 @@
             <div id="resizer-bottom" class="resizer resizer--v"></div>
             <div class="panel-tabs">
                 <button class="ptab ptab--active" id="tab-assets-btn">
-                    <i data-lucide="folder" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;"></i>
+                    <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
                     Assets
                 </button>
                 <button class="ptab" id="tab-prefabs-btn">
-                    <i data-lucide="package" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;"></i>
+                    <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2M12 12v4M10 14h4"/></svg>
                     Prefabs
                 </button>
                 <button class="ptab" id="tab-console-btn">
-                    <i data-lucide="terminal" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;"></i>
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                     Console
                 </button>
             </div>
@@ -224,27 +224,27 @@
             <div id="tab-assets" class="tab-panel tab-panel--active">
                 <div class="assets-sidebar">
                     <div class="folder-item folder-item--active" id="folder-all">
-                        <i data-lucide="folders" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
+                        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
                         All
                     </div>
                     <div class="folder-item" id="folder-sprites">
-                        <i data-lucide="image" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                         Sprites
                     </div>
                     <div class="folder-item" id="folder-audio">
-                        <i data-lucide="music" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
+                        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
                         Audio
                     </div>
                     <div class="folder-item" id="folder-scripts">
-                        <i data-lucide="code-2" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
+                        <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                         Scripts
                     </div>
                 </div>
                 <div class="assets-main">
                     <div class="assets-toolbar">
                         <button id="btn-import-asset" class="btn-import">
-                            <i data-lucide="upload" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;"></i>
-                            Import Asset
+                            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                            Import
                         </button>
                     </div>
                     <div id="asset-grid" class="asset-grid"></div>
@@ -255,11 +255,11 @@
             <!-- Console -->
             <div id="tab-console" class="tab-panel" style="display:none;flex-direction:column;">
                 <div id="console-toolbar" style="display:flex;align-items:center;gap:4px;padding:3px 6px;background:#2D2D2D;border-bottom:1px solid #1A1A1A;flex-shrink:0;">
-                    <span style="color:var(--text-muted);font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;margin-right:4px;"><i class="fa-solid fa-terminal" style="margin-right:4px;font-size:9px;color:var(--accent);"></i>Console</span>
+                    <span style="color:#6a6a6a;font-size:10px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-right:4px;">Console</span>
                     <div style="flex:1;"></div>
-                    <button id="btn-console-copy-all" title="Copy all console output to clipboard"><i class="fa-regular fa-copy" style="font-size:10px;"></i> Copy All</button>
-                    <button id="btn-console-clear" title="Clear console"><i class="fa-solid fa-trash-can" style="font-size:9px;"></i> Clear</button>
-                    <button id="btn-console-float" title="Pop out console"><i class="fa-solid fa-up-right-from-square" style="font-size:9px;"></i> Float</button>
+                    <button id="btn-console-copy-all" title="Copy all console output to clipboard" style="background:transparent;border:none;color:#6a6a6a;cursor:pointer;font-size:10px;padding:2px 5px;border-radius:2px;" onmouseenter="this.style.color='#C8C8C8'" onmouseleave="this.style.color='#6a6a6a'">⎘ Copy All</button>
+                    <button id="btn-console-clear" title="Clear console" style="background:transparent;border:none;color:#6a6a6a;cursor:pointer;font-size:10px;padding:2px 5px;border-radius:2px;" onmouseenter="this.style.color='#C8C8C8'" onmouseleave="this.style.color='#6a6a6a'">Clear</button>
+                    <button id="btn-console-float" title="Pop out console" style="background:transparent;border:none;color:#6a6a6a;cursor:pointer;font-size:10px;padding:2px 5px;border-radius:2px;" onmouseenter="this.style.color='#C8C8C8'" onmouseleave="this.style.color='#6a6a6a'">Float</button>
                     <label style="display:flex;align-items:center;gap:3px;cursor:pointer;color:#6a6a6a;font-size:10px;" title="Auto-scroll to bottom">
                         <input type="checkbox" id="console-autoscroll" checked style="accent-color:#4C97D5;cursor:pointer;"> Auto-scroll
                     </label>
@@ -280,7 +280,7 @@
     <div id="panel-inspector" class="panel panel--inspector">
         <div id="resizer-inspector" class="resizer resizer--h resizer--left"></div>
         <div class="panel-header">
-            <i data-lucide="sliders" style="width:12px;height:12px;stroke:#a78bfa;stroke-width:2;"></i>
+            <svg viewBox="0 0 24 24" class="panel-header-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <span>Inspector</span>
         </div>
 
@@ -293,7 +293,7 @@
         <!-- Transform -->
         <div class="component-block" id="inspector-transform-section">
             <div class="component-header">
-                <i data-lucide="move" style="width:12px;height:12px;stroke:var(--axis-x);stroke-width:2;flex-shrink:0;"></i>
+                <svg viewBox="0 0 24 24" class="comp-icon"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
                 <span>Transform</span>
             </div>
             <div class="component-body">
@@ -325,7 +325,7 @@
         <div class="component-block" id="inspector-sprite-section">
             <div class="component-header">
                 <input type="checkbox" checked class="comp-toggle">
-                <i data-lucide="image" style="width:12px;height:12px;stroke:var(--green);stroke-width:2;flex-shrink:0;"></i>
+                <svg viewBox="0 0 24 24" class="comp-icon"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><path d="M21 15l-5-5L5 21"/></svg>
                 <span>Sprite Renderer</span>
             </div>
             <div class="component-body">
@@ -339,13 +339,13 @@
         <!-- Animator -->
         <div class="component-block" id="inspector-anim-section">
             <div class="component-header">
-                <i data-lucide="film" style="width:12px;height:12px;stroke:var(--purple);stroke-width:2;flex-shrink:0;"></i>
+                <svg viewBox="0 0 24 24" class="comp-icon"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 4v16M2 9h6M2 15h6"/></svg>
                 <span>Animator</span>
             </div>
             <div class="component-body">
                 <div id="inspector-anim-summary" class="anim-summary">No animations</div>
                 <button id="btn-edit-animation" class="btn-secondary full-width">
-                    <i data-lucide="play-circle" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;"></i>
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     Edit Animations
                 </button>
             </div>
@@ -356,9 +356,9 @@
 
         <!-- Script Component -->
         <div id="inspector-script-section" class="component-block" style="display:none;border-left:3px solid #3a72a5;">
-            <div class="component-header">
-                <i data-lucide="code-2" style="width:12px;height:12px;stroke:var(--accent-bright);stroke-width:2;flex-shrink:0;"></i>
-                <span style="color:var(--accent-bright);">Script</span>
+            <div class="component-header" style="background:#111827;">
+                <svg viewBox="0 0 24 24" class="comp-icon" style="color:#7cb9f0;"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                <span style="color:#7cb9f0;font-weight:600;">Script</span>
             </div>
             <div class="component-body" style="background:#0d1117;">
                 <div id="inspector-script-badge" style="display:none;margin-bottom:8px;">
@@ -366,7 +366,7 @@
                         <svg viewBox="0 0 24 24" style="width:11px;height:11px;flex-shrink:0;fill:none;stroke:#7cb9f0;stroke-width:2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                         <span id="inspector-script-name" style="color:#7cb9f0;font-size:11px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</span>
                         <button id="btn-script-edit-attached" style="background:none;border:none;color:#4ade80;font-size:10px;cursor:pointer;padding:1px 4px;">Edit</button>
-                        <button id="btn-script-detach" title="Remove script from this object" style="background:none;border:none;color:var(--red);font-size:10px;cursor:pointer;padding:1px 4px;opacity:0.6;transition:opacity 0.1s;" >✕</button>
+                        <button id="btn-script-detach" title="Remove script from this object" style="background:none;border:none;color:#f87171;font-size:10px;cursor:pointer;padding:1px 4px;opacity:0.7;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">✕</button>
                     </div>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:5px;">
@@ -385,9 +385,9 @@
 
         <!-- Prefab Section -->
         <div id="inspector-prefab-section" class="component-block" style="display:none; border-left:3px solid #4a8a4a;">
-            <div class="component-header">
-                <i data-lucide="package" style="width:12px;height:12px;stroke:var(--green);stroke-width:2;flex-shrink:0;"></i>
-                <span style="color:var(--green);">Prefab Instance</span>
+            <div class="component-header" style="background:#1a2a1a;">
+                <svg viewBox="0 0 24 24" class="comp-icon" style="color:#8f8;"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2"/></svg>
+                <span style="color:#8f8;font-weight:600;">Prefab Instance</span>
             </div>
             <div class="component-body" style="background:#131f13;">
                 <div class="prop-row">
@@ -414,7 +414,7 @@
         <!-- Footer actions -->
         <div class="inspector-footer">
             <button id="btn-save-prefab" class="btn-secondary full-width">
-                <i data-lucide="package-plus" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;"></i>
+                <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2M12 12v4M10 14h4"/></svg>
                 Save as Prefab
             </button>
         </div>
@@ -428,8 +428,6 @@ import { installGlobalErrorCatchers, engineLog } from './engine.console.js';
 import './engine.keys.js'; // loads Key + Mouse constants into window
 
 window.onload = () => {
-    if (window.lucide) lucide.createIcons();
-
     startEngine();
     installGlobalErrorCatchers();
 
