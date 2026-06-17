@@ -32,6 +32,7 @@ export {
 // ── Re-export runtime public API ──────────────────────────────
 export {
     startScripts, stopScripts,
+    freezeScripts, unfreezeScripts,
     _logConsolePublic,
     triggerCollision, triggerCollisionEnd, triggerCollisionStay,
     runScriptingApiTests,

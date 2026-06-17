@@ -187,7 +187,7 @@ function _makeBody(obj, cx, cy, bodyType) {
     const body = _world.createBody({
         type:           isStatic ? 'static' : 'dynamic',
         position:       P.Vec2(bcx, bcy),
-        angle:          bodyType !== 'static' ? rot : 0,
+        angle:          rot,
         linearDamping:  obj.physicsLinearDamping  ?? 0.5,
         angularDamping: obj.physicsAngularDamping ?? 0.5,
         fixedRotation:  bodyType === 'dynamic' && !!obj.physicsFixedRotation,

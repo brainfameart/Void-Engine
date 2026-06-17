@@ -172,21 +172,28 @@ function _buildSandbox(obj, instRef) {
             obj.rotation = rad;
             if (obj.spriteGraphic) obj.spriteGraphic.rotation = rad;
             // Sync the physics body so the collision shape rotates with the sprite.
-            // Works for both dynamic and kinematic bodies.
             if (obj._physicsBody && window.planck) {
-                const body = obj._physicsBody;
-                const off  = body._zenOffset || { x: 0, y: 0 };
-                const cosR = Math.cos(rad);
-                const sinR = Math.sin(rad);
-                const pos  = body.getPosition();
-                body.setTransform(
-                    window.planck.Vec2(
-                        obj.x + off.x * cosR - off.y * sinR,
-                        obj.y + off.x * sinR + off.y * cosR
-                    ),
-                    rad
-                );
-                body.setAwake(true);
+                const ptype = obj.physicsBody;
+                if (ptype === 'static' || ptype === 'kinematic') {
+                    // Static / kinematic bodies: Planck doesn't let you rotate fixtures
+                    // in-place after creation. Rebuild the entire body so the new angle
+                    // is baked into the shape vertices (used by SAT sweep too).
+                    import('./engine.physics.js').then(m => m.rebuildBodyForObject(obj));
+                } else {
+                    // Dynamic: can teleport via setTransform.
+                    const body = obj._physicsBody;
+                    const off  = body._zenOffset || { x: 0, y: 0 };
+                    const cosR = Math.cos(rad);
+                    const sinR = Math.sin(rad);
+                    body.setTransform(
+                        window.planck.Vec2(
+                            obj.x / 100 + off.x * cosR - off.y * sinR,
+                            -obj.y / 100 + off.x * sinR + off.y * cosR
+                        ),
+                        rad
+                    );
+                    body.setAwake(true);
+                }
             }
         },
         get scaleX()     { return obj.scale?.x ?? 1; },
@@ -550,19 +557,20 @@ function _buildSandbox(obj, instRef) {
         // ── SCENE MANAGEMENT ─────────────────────────────────
         /**
          * Switch scenes. Optionally play a transition effect.
-         *   gotoScene("Level2")                      — instant switch
-         *   gotoScene(1)                             — by index
-         *   gotoScene("Level2", "fade")              — fade to black (default 0.5s)
-         *   gotoScene("Level2", "fade", 1.2)         — fade with custom duration
-         *   gotoScene("Level2", "fadewhite")         — fade to white
-         *   gotoScene("Level2", "slide-left")        — slide left
-         *   gotoScene("Level2", "slide-right")       — slide right
-         *   gotoScene("Level2", "zoom")              — zoom in/out
+         *   gotoScene("Level2")                                   — instant switch
+         *   gotoScene(1)                                          — by index
+         *   gotoScene("Level2", "fade")                          — fade (0.5 s)
+         *   gotoScene("Level2", "fade", 1.2)                     — fade, 1.2 s total
+         *   gotoScene("Level2", "fade", 0.5, { freeze: true })   — freeze scripts during
+         *   gotoScene("Level2", "fade", 0.5, { freeze: false })  — scripts keep running (default)
          *
-         * Transition names:  "fade"  "fadewhite"  "slide-left"  "slide-right"  "zoom"
-         * Duration: total seconds for the full transition (default 0.5)
+         * Transition names:  "fade"  "fadewhite"  "slide-left"  "slide-right"  "zoom"  "circle"
+         * Duration: total seconds (default 0.5).
+         * Options:
+         *   freeze (bool) — true  → onUpdate / timers pause while transition plays (no conflicts)
+         *                   false → scripts keep running through the transition (default)
          */
-        gotoScene(nameOrIndex, transition = null, duration = 0.5) {
+        gotoScene(nameOrIndex, transition = null, duration = 0.5, opts = {}) {
             let idx = -1;
             if (typeof nameOrIndex === 'number') {
                 idx = nameOrIndex;
@@ -579,13 +587,19 @@ function _buildSandbox(obj, instRef) {
             }
             if (state.isPlaying) {
                 if (transition) {
-                    const t   = String(transition);
-                    const dur = Math.max(0.1, Number(duration) || 0.5);
+                    const t      = String(transition);
+                    const dur    = Math.max(0.1, Number(duration) || 0.5);
+                    const freeze = !!(opts?.freeze);
                     import('./engine.transitions.js').then(tm => {
+                        // Optionally freeze scripts so onUpdate/timers don't conflict during transition
+                        if (freeze) {
+                            import('./engine.scripting.js').then(sm => sm.freezeScripts?.(true));
+                        }
                         // Phase 1: play the exit animation while the OLD scene is still visible.
                         tm.transitionOut(t, dur).then(() => {
-                            // Phase 2: swap the scene (overlay is fully opaque — user sees nothing).
-                            // Pass onReady so transitionIn fires the moment the new scene is live.
+                            // Phase 2: swap the scene (overlay fully opaque — nothing visible).
+                            // Always unfreeze BEFORE loading new scene so onStart fires normally.
+                            import('./engine.scripting.js').then(sm => sm.freezeScripts?.(false));
                             import('./engine.scenes.js').then(sm => {
                                 sm.playModeGotoScene(idx, () => {
                                     // Phase 3: reveal the new scene.

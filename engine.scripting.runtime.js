@@ -532,7 +532,7 @@ function destroyObject(other)       { api.destroy(other); }
  * Switch to a different scene by name or index.
  * Example: gotoScene("Level2")  or  gotoScene(1)
  */
-function gotoScene(nameOrIndex, transition, duration) { api.gotoScene(nameOrIndex, transition, duration); }
+function gotoScene(nameOrIndex, transition, duration, opts) { api.gotoScene(nameOrIndex, transition, duration, opts); }
 /** Name of the current scene */
 function currentScene()             { return api.currentScene; }
 /** Index of the current scene (0-based) */
@@ -3102,6 +3102,10 @@ export function startScripts() {
     let _last = performance.now();
     _ticker = () => {
         if (!state.isPlaying || state.isPaused) return;
+        // If a scene transition is running and the user chose freeze:true,
+        // pause script updates (onUpdate, timers, drag, etc.) but keep the
+        // PIXI render loop alive so the transition overlay animates correctly.
+        if (_scriptsFrozenDuringTransition) return;
         const now = performance.now();
         const dt  = Math.min((now - _last) / 1000, 0.1);
         _last = now;
@@ -3146,8 +3150,16 @@ export function startScripts() {
     _logConsole(`▶ Scripts: ${count} instance${count!==1?'s':''} running`, '#4ade80');
 }
 
+// ── Transition freeze flag ────────────────────────────────────
+// When true, the ticker skips script updates so gotoScene transitions
+// play smoothly without scripts interfering. Set via freezeScripts().
+let _scriptsFrozenDuringTransition = false;
+export function freezeScripts(freeze)  { _scriptsFrozenDuringTransition = !!freeze; }
+export function unfreezeScripts()      { _scriptsFrozenDuringTransition = false; }
+
 // ── Stop scripts (stopPlayMode) ───────────────────────────────
 export function stopScripts() {
+    _scriptsFrozenDuringTransition = false; // always unfreeze on stop
     for (const i of _instances) i.stop();
     _instances.length = 0;
     _clearRegistries();
