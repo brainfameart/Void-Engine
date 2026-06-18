@@ -391,10 +391,10 @@ function _showContextMenu(screenX, screenY, obj) {
     menu.style.cssText = `position:fixed;left:${screenX}px;top:${screenY}px;background:#1e1e2e;border:1px solid #3A72A5;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.8);z-index:99999;font-size:11px;color:#e0e0e0;min-width:190px;padding:4px 0;user-select:none;`;
 
     const sep = () => { const d = document.createElement('div'); d.style.cssText='border-top:1px solid #2a2a3a;margin:3px 0;'; return d; };
-    const row = (svg, label, cb, color='#e0e0e0', disabled=false) => {
+    const row = (iconName, label, cb, color='#e0e0e0', disabled=false) => {
         const r = document.createElement('div');
         r.style.cssText=`padding:7px 14px;cursor:${disabled?'default':'pointer'};color:${disabled?'#555':color};display:flex;align-items:center;gap:8px;`;
-        r.innerHTML=`<span style="width:16px;flex-shrink:0;">${svg}</span><span>${label}</span>`;
+        r.innerHTML=`<span style="width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i data-lucide="${iconName}" style="width:12px;height:12px;stroke:currentColor;stroke-width:2;"></i></span><span>${label}</span>`;
         if (!disabled) {
             r.addEventListener('mouseenter', () => r.style.background='rgba(58,114,165,0.3)');
             r.addEventListener('mouseleave', () => r.style.background='');
@@ -408,33 +408,24 @@ function _showContextMenu(screenX, screenY, obj) {
     hdr.textContent=(obj.label||'Object').slice(0,24);
     menu.appendChild(hdr);
 
-    const editSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-    const delSvg  = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:#f87171;stroke-width:2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
-    const animSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-    const upSvg   = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polyline points="18 15 12 9 6 15"/></svg>`;
-    const dnSvg   = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polyline points="6 9 12 15 18 9"/></svg>`;
-    const saveSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
-    const allSvg  = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 010 20 15.3 15.3 0 010-20z"/></svg>`;
-    const unlinkSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
-    const prefabSvg = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
-
-    menu.appendChild(row(editSvg, 'Rename', () => _inlineRenameObj(obj)));
-    menu.appendChild(row(delSvg,  'Delete', () => deleteSelected(), '#f87171'));
+    menu.appendChild(row('pencil', 'Rename', () => _inlineRenameObj(obj)));
+    menu.appendChild(row('trash-2',  'Delete', () => deleteSelected(), '#f87171'));
     menu.appendChild(sep());
-    menu.appendChild(row(animSvg, 'Edit Animations…', () => import('./engine.animator.js').then(m => m.openAnimationEditor(obj)), '#9bc'));
+    menu.appendChild(row('play', 'Edit Animations…', () => import('./engine.animator.js').then(m => m.openAnimationEditor(obj)), '#9bc'));
     menu.appendChild(sep());
     if (isPrefab) {
-        menu.appendChild(row(saveSvg, 'Apply to Prefab', () => import('./engine.prefabs.js').then(m => m.applyInstanceToPrefab(obj)), '#8f8'));
-        menu.appendChild(row(allSvg, 'Apply to All',     () => import('./engine.prefabs.js').then(m => m.applyPrefabToAll(obj.prefabId, obj)), '#6fc'));
-        menu.appendChild(row(unlinkSvg,  'Unlink from Prefab', () => import('./engine.prefabs.js').then(m => m.unlinkFromPrefab(obj)), '#facc15'));
+        menu.appendChild(row('save', 'Apply to Prefab', () => import('./engine.prefabs.js').then(m => m.applyInstanceToPrefab(obj)), '#8f8'));
+        menu.appendChild(row('globe', 'Apply to All',     () => import('./engine.prefabs.js').then(m => m.applyPrefabToAll(obj.prefabId, obj)), '#6fc'));
+        menu.appendChild(row('unlink', 'Unlink from Prefab', () => import('./engine.prefabs.js').then(m => m.unlinkFromPrefab(obj)), '#facc15'));
     } else {
-        menu.appendChild(row(prefabSvg, 'Save as Prefab', () => import('./engine.prefabs.js').then(m => { m.saveAsPrefab(obj); document.getElementById('tab-prefabs-btn')?.click(); }), '#9bc'));
+        menu.appendChild(row('package', 'Save as Prefab', () => import('./engine.prefabs.js').then(m => { m.saveAsPrefab(obj); document.getElementById('tab-prefabs-btn')?.click(); }), '#9bc'));
     }
     menu.appendChild(sep());
-    menu.appendChild(row(upSvg, 'Move Up (draw order)',   () => moveObjectUp(obj)));
-    menu.appendChild(row(dnSvg, 'Move Down (draw order)', () => moveObjectDown(obj)));
+    menu.appendChild(row('chevron-up', 'Move Up (draw order)',   () => moveObjectUp(obj)));
+    menu.appendChild(row('chevron-down', 'Move Down (draw order)', () => moveObjectDown(obj)));
 
     document.body.appendChild(menu);
+    if (window.lucide) window.lucide.createIcons({ context: menu });
     const rect = menu.getBoundingClientRect();
     if (rect.right  > window.innerWidth)  menu.style.left = (screenX - rect.width)  + 'px';
     if (rect.bottom > window.innerHeight) menu.style.top  = (screenY - rect.height) + 'px';

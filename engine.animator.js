@@ -121,6 +121,7 @@ function _buildModal(obj) {
 
     modal.innerHTML = _buildHTML(obj);
     document.body.appendChild(modal);
+    if (window.lucide) window.lucide.createIcons({ context: modal });
 
     _wire(modal, obj);
     _renderAnimList(modal, obj);
@@ -134,10 +135,7 @@ function _buildHTML(obj) {
     <!-- Title bar -->
     <div style="height:36px; background:#18181b; border-bottom:1px solid #2a2a2e;
                 display:flex; align-items:center; padding:0 14px; gap:12px; flex-shrink:0;">
-        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:#3b82f6;stroke-width:2;flex-shrink:0;">
-            <rect x="2" y="4" width="20" height="16" rx="2"/>
-            <path d="M8 4v16M2 9h6M2 15h6"/>
-        </svg>
+        <i data-lucide="film" style="width:14px;height:14px;stroke:#3b82f6;stroke-width:2;flex-shrink:0;"></i>
         <span style="font-size:11px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; color:#a0a0ae;">Animation Editor</span>
         <span style="color:#3a3a42;">—</span>
         <span style="color:#8a8a96;">${obj.label || 'Object'}</span>
@@ -145,18 +143,14 @@ function _buildHTML(obj) {
         <!-- Import zip/folder -->
         <label id="anim-import-label" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#e2e2e8;
                border-radius:3px; padding:5px 12px; cursor:pointer; font-size:10px; font-weight:500; display:flex; align-items:center; gap:6px;">
-            <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;flex-shrink:0;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <i data-lucide="upload" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
             Import ZIP / Images
         </label>
         <input type="file" id="anim-file-input" accept=".zip,image/*" multiple style="display:none;">
         <!-- Spritesheet slicer -->
         <button id="anim-slice-sheet-btn" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#4ade80;
                 border-radius:3px; padding:5px 12px; cursor:pointer; font-size:10px; font-weight:500; display:flex; align-items:center; gap:6px;">
-            <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
-              <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
-            </svg>
+            <i data-lucide="layout-grid" style="width:11px;height:11px;stroke:currentColor;stroke-width:2;flex-shrink:0;"></i>
             Slice Sheet
         </button>
         <button id="anim-close-btn" style="background:#1a1a1d; border:1px solid #2a2a2e; color:#f87171;
@@ -202,7 +196,7 @@ function _buildHTML(obj) {
                             border:1px solid #2a2a2e; border-radius:20px; padding:6px 14px; align-items:center;">
                     <button id="anim-prev-frame" title="Prev frame"
                             style="background:none; border:none; color:#a0a0ae; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:4px;">
-                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M6 6h2v12H6zM20 6L9 12l11 6V6z"/></svg>
+                        <i data-lucide="skip-back" style="width:14px;height:14px;stroke:currentColor;fill:currentColor;stroke-width:1;"></i>
                     </button>
                     <button id="anim-play-btn" title="Play/Pause"
                             style="background:#3b82f6; border:none; color:#fff; cursor:pointer;
@@ -211,7 +205,7 @@ function _buildHTML(obj) {
                     </button>
                     <button id="anim-next-frame" title="Next frame"
                             style="background:none; border:none; color:#a0a0ae; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:4px;">
-                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M18 6h-2v12h2zM4 6l11 6L4 18V6z"/></svg>
+                        <i data-lucide="skip-forward" style="width:14px;height:14px;stroke:currentColor;fill:currentColor;stroke-width:1;"></i>
                     </button>
                     <div style="width:1px; height:18px; background:#2a2a2e; margin:0 4px;"></div>
                     <span style="color:#5a5a64; font-size:10px;">Frame</span>

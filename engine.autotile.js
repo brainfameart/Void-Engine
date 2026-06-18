@@ -404,6 +404,7 @@ export function openAutoTileEditor(obj) {
 
     panel.innerHTML = _editorHTML(d);
     document.body.appendChild(panel);
+    if (window.lucide) window.lucide.createIcons({ context: panel });
     _wireEditor(panel, obj);
 }
 
@@ -475,7 +476,7 @@ function _editorHTML(d) {
   <div style="flex:1;background:#111113;display:flex;flex-direction:column;overflow:hidden;">
 
     <!-- Toolbar -->
-    <div style="padding:0 12px;height:36px;background:#18181b;border-bottom:1px solid #2a2a2e;display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0;">
+    <div style="padding:8px 12px;min-height:36px;background:#18181b;border-bottom:1px solid #2a2a2e;display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0;row-gap:6px;">
       <span style="color:#a0a0ae;font-weight:600;font-size:10px;letter-spacing:0.6px;text-transform:uppercase;">Map Painter</span>
 
       <!-- Active brush selector for painting -->
@@ -537,7 +538,8 @@ function _wireEditor(panel, obj) {
     // ── Working state ──
     let activeBrushId  = null;    // which brush is selected in the library
     let slotMode       = 'drag';  // 'drag' | 'erase'
-    let mapMode        = 'paint'; // 'paint' | 'erase' | 'eraseAll'
+    let mapMode        = 'paint'; // 'paint' | 'erase' | 'eraseAll' (current, may be a transient right-click override)
+    let selectedMapMode = 'paint'; // the mode explicitly chosen via the toolbar buttons
     let paintBrushId   = '';      // '' = paint with active brush
     let guidesOn       = true;
     let gallery        = [];
@@ -693,10 +695,8 @@ function _wireEditor(panel, obj) {
     const _mmove = e => { if (!isMapDrawing) return; const { col, row } = getCell(e); paintCell(col, row); };
     const _mup   = e => {
         if (isMapDrawing && e.button === 2) {
-            // Restore map mode after right-click erase
-            mapMode = panel.querySelector('#at-map-erase')?.classList?.contains?.('active') ? 'erase'
-                    : panel.querySelector('#at-map-erase-all')?.classList?.contains?.('active') ? 'eraseAll'
-                    : 'paint';
+            // Restore the toolbar-selected map mode after a right-click erase
+            mapMode = selectedMapMode;
         }
         isMapDrawing = false;
     };
@@ -706,6 +706,7 @@ function _wireEditor(panel, obj) {
     // ── Map mode buttons ──
     function setMapMode(m) {
         mapMode = m;
+        selectedMapMode = m;
         panel.querySelector('#at-map-paint').style.cssText    = TBTN(m === 'paint');
         panel.querySelector('#at-map-erase').style.cssText    = TBTN(m === 'erase');
         panel.querySelector('#at-map-erase-all').style.cssText = TBTN(m === 'eraseAll');

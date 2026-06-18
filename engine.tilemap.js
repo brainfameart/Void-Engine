@@ -165,15 +165,11 @@ export function openTilemapEditor(obj) {
       <div style="width:260px;flex-shrink:0;background:#1a1a1d;border-right:1px solid #2a2a2e;
                   display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:0 14px;height:36px;border-bottom:1px solid #2a2a2e;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#18181b;">
-          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:#3b82f6;stroke-width:2;flex-shrink:0;">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
-            <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
-          </svg>
+          <i data-lucide="grid-3x3" style="width:14px;height:14px;stroke:#3b82f6;stroke-width:2;flex-shrink:0;"></i>
           <span style="font-weight:600;font-size:11px;letter-spacing:0.6px;text-transform:uppercase;color:#a0a0ae;">Tilemap Editor</span>
           <div style="flex:1;"></div>
           <button id="tm-close" style="background:none;border:none;color:#5a5a64;cursor:pointer;padding:2px 5px;display:flex;align-items:center;justify-content:center;">
-            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <i data-lucide="x" style="width:13px;height:13px;stroke:currentColor;stroke-width:2;"></i>
           </button>
         </div>
 
@@ -205,16 +201,16 @@ export function openTilemapEditor(obj) {
           <div style="font-size:9px;font-weight:600;color:#5a5a64;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;">Tools</div>
           <div style="display:flex;gap:4px;">
             <button class="tm-tool-btn tm-tool-active" data-tool="paint" title="Paint (B)">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+              <i data-lucide="paintbrush" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;"></i>
             </button>
             <button class="tm-tool-btn" data-tool="erase" title="Erase (E)">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M20 20H7L3 16l10-10 7 7-1.5 1.5"/></svg>
+              <i data-lucide="eraser" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;"></i>
             </button>
             <button class="tm-tool-btn" data-tool="fill" title="Fill (F)">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M16 6l2 2-8 8-4-4 8-8z"/><path d="M2 22l4-4"/><circle cx="20" cy="20" r="2"/></svg>
+              <i data-lucide="paint-bucket" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;"></i>
             </button>
             <button class="tm-tool-btn" data-tool="pick" title="Pick tile (I)">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <i data-lucide="pipette" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;"></i>
             </button>
           </div>
         </div>
@@ -258,6 +254,7 @@ export function openTilemapEditor(obj) {
     `;
 
     document.body.appendChild(panel);
+    if (window.lucide) window.lucide.createIcons({ context: panel });
     _wireTilemapEditor(panel, obj);
 }
 
