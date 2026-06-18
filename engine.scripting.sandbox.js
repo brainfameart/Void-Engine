@@ -14,7 +14,7 @@ import {
     _logConsole, _instances,
     _sceneVars, _globalVars,
     _tagRegistry, _groupRegistry,
-    _debugLines, _isOverlapping,
+    _debugLines, _isOverlapping, _getAABB,
     _nextRepeatId, _scriptFnCache,
     _friendlyScriptError,
     _newScriptInstance,
@@ -29,6 +29,9 @@ import {
     _navStartWalk, _navStartFollow, _navStop,
     _navStartFlee, _navStartWander,
 } from './engine.scripting.nav.js';
+import {
+    _applyThrowVelocity, _createJoystick, _destroyAllJoysticks,
+} from './engine.scripting.runtime.js';
 
 function _buildSandbox(obj, instRef) {
     const _keys         = new Set();

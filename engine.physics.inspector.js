@@ -11,6 +11,7 @@ import { collisionGeom, rawSpriteSize } from './engine.collision-overlay.js';
 import {
     rebuildBodyForObject,
     migratePolygonsToContainer,
+    _innerScale,
 } from './engine.physics.js';
 
 // ── Inspector HTML ────────────────────────────────────────────

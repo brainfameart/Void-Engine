@@ -341,7 +341,7 @@ export function _registerInstance(inst) {
 export function _clearRegistries() { _tagRegistry.clear(); _groupRegistry.clear(); }
 
 // ── Message bus ───────────────────────────────────────────────
-function _deliverMsg(inst, msg, data) {
+export function _deliverMsg(inst, msg, data) {
     const handler = inst._messageHandlers?.get(msg);
     if (!handler) return;
     try { handler(data); }

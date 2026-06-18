@@ -7,7 +7,7 @@
    ============================================================ */
 
 import { state }        from './engine.state.js';
-import { _logConsole, _instances } from './engine.scripting.shared.js';
+import { _logConsole, _instances, _getAABB } from './engine.scripting.shared.js';
 import {
     navFleeVelocity, navSeparationForce, navTickWander, navTickStuck,
     navPredictPosition, navUpdateMemory,

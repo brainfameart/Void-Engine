@@ -85,7 +85,7 @@ function _rawSize(obj) {
     return { w: 40, h: 40 };
 }
 
-function _innerScale(obj) {
+export function _innerScale(obj) {
     const src = obj.spriteGraphic || obj._runtimeSprite;
     return {
         x: Math.abs(src?.scale?.x ?? 1) || 1,

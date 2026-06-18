@@ -5,7 +5,8 @@
                          exposes the full scripting API surface
    ============================================================ */
 
-import { _instances, _isOverlapping, _tagRegistry } from './engine.scripting.shared.js';
+import { _instances, _isOverlapping, _tagRegistry, _logConsole, _deliverMsg } from './engine.scripting.shared.js';
+import { _deepCopyObjectProps } from './engine.scripting.sandbox.js';
 
 function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
     let _realProxy = null;

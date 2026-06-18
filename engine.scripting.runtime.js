@@ -2498,7 +2498,7 @@ function _applyDragThisFrame(dt) {
 }
 
 // Apply throw velocity to the released physics body
-function _applyThrowVelocity(obj) {
+export function _applyThrowVelocity(obj) {
     const opts     = _activeDragOpts;
     const speedMul = opts.speed ?? 1;
     let vx = _throwVelX * speedMul;
@@ -2576,7 +2576,7 @@ function _onDragMouseUp() {
 // ── Virtual Joystick system ───────────────────────────────────
 const _joysticks = [];
 
-function _createJoystick(opts = {}) {
+export function _createJoystick(opts = {}) {
     const size      = opts.size        ?? 120;
     const knobSize  = opts.knobSize    ?? Math.round(size * 0.45);
     const deadzone  = opts.deadzone    ?? 0.1;
@@ -2775,7 +2775,7 @@ function _createJoystick(opts = {}) {
     return handle;
 }
 
-function _destroyAllJoysticks() {
+export function _destroyAllJoysticks() {
     // Copy array because destroy() mutates it
     for (const j of [..._joysticks]) j.destroy();
 }
