@@ -176,36 +176,16 @@ export function installGlobalErrorCatchers() {
             text += '\n  💡 A network request failed. Check your connection, or avoid fetch() inside scripts.';
         } else if (msg.includes('AbortError')) {
             text += '\n  💡 An operation was aborted. This is usually harmless on scene switch.';
-        } else if (msg.toLowerCase().includes('unexpected identifier') || msg.toLowerCase().includes('syntaxerror')
-                   || msg.toLowerCase().includes('missing )') || msg.toLowerCase().includes('missing }')
-                   || msg.toLowerCase().includes('unexpected token') || msg.toLowerCase().includes('unexpected end of')) {
-            text += '\n  💡 A syntax error occurred while compiling a script. See full dump below for the exact source.';
+        } else if (msg.toLowerCase().includes('unexpected identifier') || msg.toLowerCase().includes('syntaxerror')) {
+            text += '\n  💡 A syntax error occurred in a script or engine module. Check recent script changes.';
         }
-        // ── Full diagnostic dump ───────────────────────────────────────────
-        // SyntaxErrors thrown by `new Function(...)`/`new AsyncFunction(...)`
-        // almost never have a populated .stack (the error happens during
-        // parsing, before any call frames exist), so .stack alone is not
-        // enough to debug a bad compile. Dump every field we can reach.
-        text += `\n  🔍 RAW: [${reason?.name ?? typeof reason}] ${msg}`;
         if (reason?.stack) {
+            // Show up to 3 useful stack frames (include engine frames so the source is visible)
             const frames = reason.stack.split('\n')
                 .filter(l => l.trim().startsWith('at '))
-                .slice(0, 5);
-            if (frames.length) text += '\n  📋 STACK:\n  ' + frames.map(f => f.trim()).join('\n  ');
-            else text += `\n  📋 STACK (raw, no frames): ${reason.stack.split('\n')[0]}`;
-        } else {
-            text += '\n  📋 STACK: (none — typical for a SyntaxError thrown during script compilation)';
+                .slice(0, 3);
+            if (frames.length) text += '\n  ' + frames.map(f => f.trim()).join('\n  ');
         }
-        // If the engine attached extra debug context to the error before
-        // it escaped (see _tagErrorWithSource in engine.scripting.*), show it.
-        if (reason?._zeSource) {
-            text += `\n  📝 SOURCE: ${reason._zeOrigin ?? 'unknown origin'}`;
-            text += '\n  ── offending source (first/last 400 chars) ──';
-            const s = reason._zeSource;
-            text += '\n  ' + (s.length > 800 ? s.slice(0, 400) + '\n  …\n  ' + s.slice(-400) : s);
-        }
-        if (reason?._zeScript) text += `\n  📝 SCRIPT: "${reason._zeScript}"${reason._zeObj ? ' on object "' + reason._zeObj + '"' : ''}`;
-        console.error('[Zengine] Unhandled promise rejection — full reason object:', reason);
         engineLog(text, ERR);
         if (state.isPlaying) _autoShowConsole();
     });

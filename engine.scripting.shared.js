@@ -19,19 +19,6 @@ export const _groupRegistry = new Map();
 // ── Active script instances (populated at runtime) ────────────
 export const _instances = [];
 
-// ── Play-session generation counter ───────────────────────────
-// Bumped every time scripts stop (scene restart, scene switch, or
-// stop-play). Async callbacks (cloneSelf's import().then(), wait()
-// timers, etc.) capture the generation at schedule time and check
-// it before mutating state — if the generation has moved on, the
-// callback is stale and bails out. This is the same pattern Unity
-// uses with its scene handle and Godot uses with tree generation:
-// it prevents rapid scene-restart/switch from leaking clones or
-// writing into the wrong scene's objects.
-export let _playGeneration = 0;
-export function _bumpPlayGeneration() { return ++_playGeneration; }
-export function _currentPlayGeneration() { return _playGeneration; }
-
 // ── Debug draw state ──────────────────────────────────────────
 export let _debugGfx   = null;
 export const _debugLines = [];
@@ -64,57 +51,6 @@ export function _getAABB(obj) {
         top:    obj.y - hh * sy,
         bottom: obj.y + hh * sy,
     };
-}
-
-// ── OBB (Oriented Bounding Box) ray intersection ─────────────
-// Used by raycast so rotated objects are hit correctly.
-// Returns the entry t [0,1] along the ray, or null if no hit.
-// px1,py1 → px2,py2 are in engine-internal pixels.
-// The OBB is defined by its centre (cx,cy), half-extents (hw,hh) and rotation angle.
-export function _raycastOBB(px1, py1, px2, py2, cx, cy, hw, hh, angle) {
-    // Transform ray into OBB-local space (rotate around OBB centre)
-    const cos = Math.cos(-angle);
-    const sin = Math.sin(-angle);
-    const rdx = px2 - px1;
-    const rdy = py2 - py1;
-    const ox  = px1 - cx;
-    const oy  = py1 - cy;
-    // Local origin and direction
-    const lox = ox * cos - oy * sin;
-    const loy = ox * sin + oy * cos;
-    const ldx = rdx * cos - rdy * sin;
-    const ldy = rdx * sin + rdy * cos;
-    // AABB slab test in local space
-    const invDx = ldx !== 0 ? 1 / ldx : Infinity;
-    const invDy = ldy !== 0 ? 1 / ldy : Infinity;
-    let tx1 = (-hw - lox) * invDx;
-    let tx2 = ( hw - lox) * invDx;
-    let ty1 = (-hh - loy) * invDy;
-    let ty2 = ( hh - loy) * invDy;
-    if (tx1 > tx2) { const s = tx1; tx1 = tx2; tx2 = s; }
-    if (ty1 > ty2) { const s = ty1; ty1 = ty2; ty2 = s; }
-    const tmin = Math.max(tx1, ty1);
-    const tmax = Math.min(tx2, ty2);
-    if (tmin > tmax || tmax < 0 || tmin > 1) return null;
-    const t = Math.max(0, tmin);
-    // Surface normal in OBB-local space
-    let lnx = 0, lny = 0;
-    if (tx1 > ty1) { lnx = ldx < 0 ? 1 : -1; }
-    else           { lny = ldy < 0 ? 1 : -1; }
-    // Rotate normal back to world space
-    const wnx = lnx * cos - lny * (-sin);
-    const wny = lnx * sin + lny * cos;   // note: inverse of the -angle rotation
-    return { t, nx: lnx * Math.cos(angle) - lny * Math.sin(angle),
-                ny: lnx * Math.sin(angle) + lny * Math.cos(angle) };
-}
-
-// ── OBB half-extents for a game object ───────────────────────
-// Returns { cx, cy, hw, hh, angle } in engine-internal pixels.
-export function _getOBBParams(obj) {
-    const sg  = obj.spriteGraphic || obj._runtimeSprite;
-    const hw  = ((sg?.width  ?? obj._bounds?.width  ?? 100) / 2) * Math.abs(obj.scale?.x ?? 1);
-    const hh  = ((sg?.height ?? obj._bounds?.height ?? 100) / 2) * Math.abs(obj.scale?.y ?? 1);
-    return { cx: obj.x, cy: obj.y, hw, hh, angle: obj.rotation ?? 0 };
 }
 
 export function _isOverlapping(objA, objB) {

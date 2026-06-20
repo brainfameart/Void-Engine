@@ -332,13 +332,6 @@ export async function startPhysics() {
         if (type === 'kinematic') {
             obj._kinematicVx           = 0;
             obj._kinematicVy           = 0;
-            // Sustained velocity — persists frame-to-frame like Godot's
-            // CharacterBody2D.velocity / Unity's Rigidbody.velocity, unlike
-            // _kinematicVx/Vy which is a one-shot per-frame input that scripts
-            // re-supply every update(). Used by throwObject()/makeThrowable()
-            // so thrown objects WITHOUT a script keep moving after release.
-            obj._kinematicSustainedVx  = 0;
-            obj._kinematicSustainedVy  = 0;
             obj._pendingKinematicDelta = { x: 0, y: 0 };
             obj._kinematicPrevX        = obj.x;
             obj._kinematicPrevY        = obj.y;
@@ -511,35 +504,17 @@ function _circleVerts(cx, cy, r, n = 16) {
 // Returns { parts: [ [{x,y},...], ... ], allVerts: [{x,y},...] }
 // parts   — array of convex polygons (triangles for concave input)
 // allVerts — flat list of all verts (for AABB / centroid maths)
-//
-// ROTATION: vertices are first built around a local origin, then
-// rotated by obj.rotation so the collision shape always matches
-// the visual sprite — like Unity/Godot/Unreal do automatically.
-function _rotateVertsAround(verts, cx, cy, angle) {
-    if (!angle) return verts; // fast path for unrotated objects
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return verts.map(v => {
-        const dx = v.x - cx, dy = v.y - cy;
-        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-    });
-}
-
 function _getKinematicShape(obj) {
-    const sx    = Math.abs(obj.scale?.x ?? 1) || 1;
-    const sy    = Math.abs(obj.scale?.y ?? 1) || 1;
+    const sx = Math.abs(obj.scale?.x ?? 1) || 1;
+    const sy = Math.abs(obj.scale?.y ?? 1) || 1;
     const shape = obj.physicsShape ?? 'box';
-    const rot   = obj.rotation || 0;   // obj rotation in radians
 
     // ── Circle ───────────────────────────────────────────────
     if (shape === 'circle') {
         const g  = collisionGeom(obj);
         const r  = g.r * Math.min(sx, sy);
-        // Offset is in local space — rotate it by obj.rotation
-        const ox = (g.ox || 0) * sx;
-        const oy = (g.oy || 0) * sy;
-        const cx = obj.x + (ox * Math.cos(rot) - oy * Math.sin(rot));
-        const cy = obj.y + (ox * Math.sin(rot) + oy * Math.cos(rot));
+        const cx = obj.x + (g.ox || 0) * sx;
+        const cy = obj.y + (g.oy || 0) * sy;
         const verts = _circleVerts(cx, cy, r, 16);
         return { parts: [verts], allVerts: verts };
     }
@@ -550,22 +525,20 @@ function _getKinematicShape(obj) {
         const capW = (obj.physicsSize?.capW ?? g.w) * sx;
         const capH = (obj.physicsSize?.capH ?? g.h) * sy;
         const capR = Math.min(capW, capH) / 2;
-        const ox   = (g.ox || 0) * sx;
-        const oy   = (g.oy || 0) * sy;
-        const cx   = obj.x + (ox * Math.cos(rot) - oy * Math.sin(rot));
-        const cy   = obj.y + (ox * Math.sin(rot) + oy * Math.cos(rot));
+        const cx   = obj.x + (g.ox || 0) * sx;
+        const cy   = obj.y + (g.oy || 0) * sy;
         const N    = 8; // verts per hemisphere
-        let rawVerts = [];
+        const verts = [];
         if (capW >= capH) {
             const len = capW / 2 - capR;
-            for (let i = 0; i <= N; i++) { const a = Math.PI/2 + (i/N)*Math.PI; rawVerts.push({ x: cx - len + Math.cos(a)*capR, y: cy + Math.sin(a)*capR }); }
-            for (let i = 0; i <= N; i++) { const a = -Math.PI/2 + (i/N)*Math.PI; rawVerts.push({ x: cx + len + Math.cos(a)*capR, y: cy + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = Math.PI/2 + (i/N)*Math.PI; verts.push({ x: cx - len + Math.cos(a)*capR, y: cy + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = -Math.PI/2 + (i/N)*Math.PI; verts.push({ x: cx + len + Math.cos(a)*capR, y: cy + Math.sin(a)*capR }); }
         } else {
             const len = capH / 2 - capR;
-            for (let i = 0; i <= N; i++) { const a = Math.PI + (i/N)*Math.PI; rawVerts.push({ x: cx + Math.cos(a)*capR, y: cy - len + Math.sin(a)*capR }); }
-            for (let i = 0; i <= N; i++) { const a = (i/N)*Math.PI; rawVerts.push({ x: cx + Math.cos(a)*capR, y: cy + len + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = Math.PI + (i/N)*Math.PI; verts.push({ x: cx + Math.cos(a)*capR, y: cy - len + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = (i/N)*Math.PI; verts.push({ x: cx + Math.cos(a)*capR, y: cy + len + Math.sin(a)*capR }); }
         }
-        const verts = _rotateVertsAround(rawVerts, cx, cy, rot);
+        // Capsule hull is convex — one part
         return { parts: [verts], allVerts: verts };
     }
 
@@ -573,16 +546,8 @@ function _getKinematicShape(obj) {
     const poly = _getActivePolygon(obj);
     if (Array.isArray(poly) && poly.length >= 3 &&
         (shape === 'polygon' || shape === 'shared')) {
-        // Polygon verts are in object-local space (relative to sprite centre).
-        // Apply obj.scale then obj.rotation then translate to world position.
-        const worldVerts = poly.map(p => {
-            const lx = p.x * sx;
-            const ly = p.y * sy;
-            return {
-                x: obj.x + lx * Math.cos(rot) - ly * Math.sin(rot),
-                y: obj.y + lx * Math.sin(rot) + ly * Math.cos(rot),
-            };
-        });
+        const worldVerts = poly.map(p => ({ x: obj.x + p.x * sx, y: obj.y + p.y * sy }));
+        // Decompose into convex triangles (handles concave shapes transparently)
         const tris = _triangulate(worldVerts);
         const parts = tris.length > 0 ? tris : [worldVerts];
         return { parts, allVerts: worldVerts };
@@ -592,16 +557,12 @@ function _getKinematicShape(obj) {
     const g  = collisionGeom(obj);
     const w  = (g.w || 32) * sx;
     const h  = (g.h || 32) * sy;
-    const ox = (g.ox || 0) * sx;
-    const oy = (g.oy || 0) * sy;
-    // Centre of the collision box in world space (offset rotated by obj.rotation)
-    const bcx = obj.x + (ox * Math.cos(rot) - oy * Math.sin(rot));
-    const bcy = obj.y + (ox * Math.sin(rot) + oy * Math.cos(rot));
-    const rawVerts = [
-        { x: bcx - w/2, y: bcy - h/2 }, { x: bcx + w/2, y: bcy - h/2 },
-        { x: bcx + w/2, y: bcy + h/2 }, { x: bcx - w/2, y: bcy + h/2 },
+    const cx = obj.x + (g.ox || 0) * sx;
+    const cy = obj.y + (g.oy || 0) * sy;
+    const verts = [
+        { x: cx - w/2, y: cy - h/2 }, { x: cx + w/2, y: cy - h/2 },
+        { x: cx + w/2, y: cy + h/2 }, { x: cx - w/2, y: cy + h/2 },
     ];
-    const verts = _rotateVertsAround(rawVerts, bcx, bcy, rot);
     return { parts: [verts], allVerts: verts };
 }
 
@@ -820,24 +781,15 @@ function _sweepSAT(shape, dx, dy, statics) {
 //   Ground:  contact pushes player UP   → mtv.ny < 0,  |mtv.ny| ≥ FLOOR_DOT
 //   Ceiling: contact pushes player DOWN → mtv.ny > 0,  |mtv.ny| ≥ FLOOR_DOT
 //   Wall:    contact pushes player sideways → |mtv.nx| ≥ FLOOR_DOT
-// Returns 'ground' (flat, walkable, within FLOOR_DOT of horizontal),
-// 'slope' (pushes upward but steeper than the walkable cone — a real
-// object here would slide), or null (nothing below).
-function _probeGroundType(shape, statics) {
+function _probeGround(shape, statics) {
     const probed = _translateShape(shape, 0, PROBE_DIST);
-    let best = null; // steepest qualifying contact wins (most physically relevant)
     for (const s of statics) {
         const mtv = _satCompound(probed.parts, s.verts);
         if (!mtv) continue;
-        if (mtv.ny < -FLOOR_DOT) return 'ground'; // flat floor — no need to keep looking
-        // Upward-ish push but outside the walkable cone = slope. Same 0.1..FLOOR_DOT
-        // band used by the sweep classifier, so idle and moving frames agree.
-        if (mtv.ny < -0.1) best = 'slope';
+        // Normal must push player mostly UP (floor-like angle ≤ 45° from horizontal)
+        if (mtv.ny < -FLOOR_DOT) return true;
     }
-    return best;
-}
-function _probeGround(shape, statics) {
-    return _probeGroundType(shape, statics) === 'ground';
+    return false;
 }
 function _probeCeiling(shape, statics) {
     const probed = _translateShape(shape, 0, -PROBE_DIST);
@@ -911,15 +863,12 @@ export function stepPhysics(dt) {
         if (obj.physicsImmovable) {
             obj._kinematicVx           = 0;
             obj._kinematicVy           = 0;
-            obj._kinematicSustainedVx  = 0;
-            obj._kinematicSustainedVy  = 0;
             obj._pendingKinematicDelta = { x: 0, y: 0 };
             obj._kinematicPrevX        = obj.x;
             obj._kinematicPrevY        = obj.y;
             obj._isOnGround  = false;
             obj._isOnCeiling = false;
             obj._isOnWall    = false;
-            obj._isOnSlope   = false;
             if (body) {
                 const off  = body._zenOffset || { x: 0, y: 0 };
                 const cosR = Math.cos(obj.rotation || 0);
@@ -934,20 +883,8 @@ export function stepPhysics(dt) {
         }
 
         // 1. Consume desired velocity / pending delta from scripts
-        // Sustained velocity (from throwObject/makeThrowable on a scriptless
-        // object) adds in every frame until it decays or the object lands —
-        // it is NOT cleared here. A script writing _kinematicVx this frame
-        // (one-shot input) takes priority and also damps any sustained value
-        // so the two systems don't fight (e.g. a script grabbing control of
-        // an object mid-flight).
-        let vx = obj._kinematicVx ?? 0;
-        let vy = obj._kinematicVy ?? 0;
-        const sustainedVx = obj._kinematicSustainedVx ?? 0;
-        const sustainedVy = obj._kinematicSustainedVy ?? 0;
-        if (sustainedVx !== 0 || sustainedVy !== 0) {
-            vx += sustainedVx;
-            vy += sustainedVy;
-        }
+        const vx = obj._kinematicVx ?? 0;
+        const vy = obj._kinematicVy ?? 0;
         obj._kinematicVx = 0;
         obj._kinematicVy = 0;
         const pd = obj._pendingKinematicDelta || { x: 0, y: 0 };
@@ -973,11 +910,9 @@ export function stepPhysics(dt) {
             // scripts that zero velocityY on isOnCeiling() to kill gravity and float.
             // Ceiling contact is only meaningful when the body actually swept into one.
             const idleShape = _getKinematicShape(obj);
-            const idleGroundType = _probeGroundType(idleShape, statics);
-            obj._isOnGround  = idleGroundType === 'ground';
+            obj._isOnGround  = _probeGround(idleShape, statics);
             obj._isOnCeiling = false;
-            obj._isOnWall    = idleGroundType ? false : _probeWall(idleShape, statics);
-            obj._isOnSlope   = idleGroundType === 'slope';
+            obj._isOnWall    = false;
             obj._kinematicActualVx = 0;
             obj._kinematicActualVy = 0;
             obj._kinematicPrevX = obj.x;
@@ -1091,47 +1026,16 @@ export function stepPhysics(dt) {
         // because the player touched it — only surfaces within 45° of horizontal do.
         // The idle ground-probe runs after (angle-aware too) so standing still on a
         // slope still registers correctly.
-        let sweepOnGround = false, sweepOnCeiling = false, sweepOnWall = false, sweepOnSlope = false;
+        let sweepOnGround = false, sweepOnCeiling = false, sweepOnWall = false;
         for (const n of allHitNormals) {
             if      (n.ny < -FLOOR_DOT)              sweepOnGround  = true;
             else if (n.ny >  FLOOR_DOT)              sweepOnCeiling = true;
             else if (Math.abs(n.nx) >= FLOOR_DOT)    sweepOnWall    = true;
-            // Slope: normal pushes upward but not enough to be a flat floor —
-            // mirrors Godot's is_on_floor() / is_on_wall() gap.
-            // |ny| between 0.1 and FLOOR_DOT means a diagonal surface (slope).
-            else if (n.ny < -0.1)                    sweepOnSlope   = true;
         }
         const finalShape = _getKinematicShape(obj);
-        const finalGroundType = _probeGroundType(finalShape, subStatics);
-        obj._isOnGround  = sweepOnGround  || finalGroundType === 'ground';
+        obj._isOnGround  = sweepOnGround  || _probeGround(finalShape, subStatics);
         obj._isOnCeiling = sweepOnCeiling;
         obj._isOnWall    = sweepOnWall    || (!sweepOnGround && !sweepOnCeiling && (hitLeft || hitRight));
-        obj._isOnSlope   = (sweepOnSlope || finalGroundType === 'slope') && !obj._isOnGround;
-
-        // ── Sustained velocity decay (thrown scriptless objects) ────────────
-        // Kinematic bodies have NO gravity by engine design (script-controlled
-        // only — see physicsBody docs). So a thrown scriptless kinematic object
-        // keeps its horizontal AND vertical velocity in a straight line until it
-        // hits something, then ground friction brings it to rest — exactly like
-        // sliding an object across a table. If you want it to arc and fall,
-        // attach a script and apply your own gravity via velocityY, same as any
-        // other kinematic body in this engine.
-        if (sustainedVx !== 0 || sustainedVy !== 0) {
-            let nsvx = sustainedVx, nsvy = sustainedVy;
-            if (obj._isOnGround) {
-                // Landed — ground friction brings it to a stop (default friction 0.3 → ~0.5s)
-                const fric  = obj.physicsFriction ?? 0.3;
-                const decay = Math.max(0, 1 - fric * 6 * dt);
-                nsvx *= decay;
-                nsvy *= decay;
-                if (Math.abs(nsvx) < 2) nsvx = 0; // snap to rest below 0.02 world-units/sec
-                if (Math.abs(nsvy) < 2) nsvy = 0;
-            }
-            if (sweepOnWall)                nsvx = 0; // wall stopped horizontal motion
-            if (sweepOnCeiling && nsvy < 0) nsvy = 0; // ceiling stopped upward motion
-            obj._kinematicSustainedVx = nsvx;
-            obj._kinematicSustainedVy = nsvy;
-        }
 
         // Track actual velocity (px/s) so physics.velX/velY work for kinematic too
         obj._kinematicActualVx =  (obj.x - prevX) / Math.max(dt, 0.001);
@@ -1251,7 +1155,7 @@ export function stepPhysics(dt) {
         // |push.x| dominates (wall-like angle)               → wall   → isOnWall
         // Only surfaces within 45° of horizontal register as floor or ceiling;
         // steep walls and angled surfaces at >45° from horizontal are walls.
-        let onGround = false, onCeiling = false, onWall = false, onSlope = false;
+        let onGround = false, onCeiling = false, onWall = false;
         for (let ce = body.getContactList(); ce; ce = ce.next) {
             const contact = ce.contact;
             if (!contact || !contact.isTouching()) continue;
@@ -1266,21 +1170,13 @@ export function stepPhysics(dt) {
             if      (py >=  FLOOR_DOT)           onGround  = true;
             else if (py <= -FLOOR_DOT)           onCeiling = true;
             else if (Math.abs(px) >= FLOOR_DOT)  onWall    = true;
-            // Slope: surface pushes upward but not enough to count as flat floor —
-            // a real object resting here (outside the friction cone) would slide down.
-            // Same 0.1..FLOOR_DOT band as the kinematic sweep classifier above.
-            else if (py > 0.1)                   onSlope   = true;
         }
         obj._isOnGround  = onGround;
         obj._isOnCeiling = onCeiling;
         obj._isOnWall    = onWall;
-        obj._isOnSlope   = onSlope && !onGround;
 
         // ── Full sleep ───────────────────────────────────────────
-        // Skip sleep entirely on a slope: gravity has a real component along
-        // the surface there, so a momentarily-slow tire/box should keep being
-        // accelerated by the simulation instead of getting frozen mid-incline.
-        if (!onSlope && speed < SLEEP_SPEED && Math.abs(omega) < SLEEP_OMEGA) {
+        if (speed < SLEEP_SPEED && Math.abs(omega) < SLEEP_OMEGA) {
             body.setLinearVelocity(P.Vec2(0, 0));
             body.setAngularVelocity(0);
             body.setAwake(false);
@@ -1297,10 +1193,7 @@ export function stepPhysics(dt) {
         if (vy > 0 && onGround && Math.abs(vy) < BOUNCE_KILL_Y) vy = 0;
 
         // ── Bounce-kill on X ─────────────────────────────────────
-        // Only kills lingering bounce jitter on flat ground/walls. On a slope,
-        // slow horizontal speed is often the start of a real roll/slide under
-        // gravity — zeroing it here would stop a tire before it can build speed.
-        if (!onSlope && Math.abs(vx) < BOUNCE_KILL_X) vx = 0;
+        if (Math.abs(vx) < BOUNCE_KILL_X) vx = 0;
 
         // ── Angular rest ─────────────────────────────────────────
         const newOmega = Math.abs(omega) < SLEEP_OMEGA ? 0 : omega;
@@ -1338,8 +1231,6 @@ export function stopPhysics() {
             delete obj._physicsBody;
             delete obj._kinematicVx;
             delete obj._kinematicVy;
-            delete obj._kinematicSustainedVx;
-            delete obj._kinematicSustainedVy;
             delete obj._kinematicActualVx;
             delete obj._kinematicActualVy;
             delete obj._kinematicPrevX;
@@ -1348,7 +1239,6 @@ export function stopPhysics() {
             delete obj._isOnGround;
             delete obj._isOnCeiling;
             delete obj._isOnWall;
-            delete obj._isOnSlope;
         }
     }
     _world  = null;
@@ -1367,8 +1257,6 @@ export function getIsOnGround(obj)   { return !!obj._isOnGround; }
 export function getIsOnCeiling(obj)  { return !!obj._isOnCeiling; }
 /** Returns true if the kinematic body is pressed against a wall. */
 export function getIsOnWall(obj)     { return !!obj._isOnWall; }
-/** Returns true if the kinematic body is touching a slope (diagonal surface). */
-export function getIsOnSlope(obj)    { return !!obj._isOnSlope; }
 
 // ── rebuildBodyForObject ──────────────────────────────────────
 /**
@@ -1388,8 +1276,6 @@ export function removePhysicsBody(obj) {
     delete obj._physicsBody;
     delete obj._kinematicVx;
     delete obj._kinematicVy;
-    delete obj._kinematicSustainedVx;
-    delete obj._kinematicSustainedVy;
     delete obj._kinematicActualVx;
     delete obj._kinematicActualVy;
     delete obj._kinematicPrevX;
@@ -1398,7 +1284,6 @@ export function removePhysicsBody(obj) {
     delete obj._isOnGround;
     delete obj._isOnCeiling;
     delete obj._isOnWall;
-    delete obj._isOnSlope;
     _bodies.splice(idx, 1);
     _kinematicContacts.delete(obj);
 }
@@ -1422,8 +1307,6 @@ export function rebuildBodyForObject(obj) {
         // Switching to none — clean up all physics runtime state
         delete obj._kinematicVx;
         delete obj._kinematicVy;
-        delete obj._kinematicSustainedVx;
-        delete obj._kinematicSustainedVy;
         delete obj._kinematicActualVx;
         delete obj._kinematicActualVy;
         delete obj._kinematicPrevX;
@@ -1432,7 +1315,6 @@ export function rebuildBodyForObject(obj) {
         delete obj._isOnGround;
         delete obj._isOnCeiling;
         delete obj._isOnWall;
-        delete obj._isOnSlope;
         return;
     }
 
@@ -1470,8 +1352,6 @@ export function rebuildBodyForObject(obj) {
     // dynamic or static — clean up any leftover kinematic state
     delete obj._kinematicVx;
     delete obj._kinematicVy;
-    delete obj._kinematicSustainedVx;
-    delete obj._kinematicSustainedVy;
     delete obj._kinematicActualVx;
     delete obj._kinematicActualVy;
     delete obj._kinematicPrevX;

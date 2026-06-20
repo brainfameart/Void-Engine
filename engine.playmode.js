@@ -21,23 +21,15 @@ export function enterPlayMode() {
     _showPlayOverlay();
     _startFPSCounter();
     // Reset play-mode error counter + open floating console if it exists
-    import('./engine.console.js').then(m => { m.resetPlayErrors(); m.onPlayStart(); })
-        .catch(e => console.error('[Zengine] enterPlayMode: engine.console.js step failed:', e));
+    import('./engine.console.js').then(m => { m.resetPlayErrors(); m.onPlayStart(); });
     // Start animating all objects
-    import('./engine.playmode.js').then(m => m.startRuntimeAnimations())
-        .catch(e => console.error('[Zengine] enterPlayMode: startRuntimeAnimations failed:', e));
+    import('./engine.playmode.js').then(m => m.startRuntimeAnimations());
     // Start physics simulation
-    import('./engine.physics.js').then(m => m.startPhysics())
-        .catch(e => console.error('[Zengine] enterPlayMode: startPhysics failed:', e));
+    import('./engine.physics.js').then(m => m.startPhysics());
     // Start 3D positional audio
-    import('./engine.audio.js').then(m => m.startPlayAudio())
-        .catch(e => console.error('[Zengine] enterPlayMode: startPlayAudio failed:', e));
+    import('./engine.audio.js').then(m => m.startPlayAudio());
     // Start user scripts (sandboxed, play-mode only)
-    import('./engine.scripting.js').then(m => m.startScripts())
-        .catch(e => {
-            console.error('[Zengine] enterPlayMode: startScripts failed to even load/run:', e);
-            try { _logConsole(`❌ FATAL: could not start scripts — ${e?.message ?? e}`, '#f87171'); } catch(_) {}
-        });
+    import('./engine.scripting.js').then(m => m.startScripts());
     _logConsole('▶ Play Mode — Space or ■ to stop', '#4ade80');
 }
 

@@ -425,16 +425,14 @@ export function bindPhysicsInspector(obj) {
     document.getElementById('phys-density')?.addEventListener('change', (e) => { obj.physicsDensity = Math.max(0.0001, parseFloat(e.target.value) || 0.001); _pushUndo(); });
         markDirty();
     document.getElementById('phys-gravity-scale')?.addEventListener('change', (e) => {
-        const parsed = parseFloat(e.target.value);
-        obj.physicsGravityScale = Number.isFinite(parsed) ? parsed : 1;
+        obj.physicsGravityScale = parseFloat(e.target.value) ?? 1;
         markDirty();
         // Wake the body immediately so new gravity takes effect without needing a script
         if (obj._physicsBody) { try { obj._physicsBody.setAwake(true); } catch(_) {} }
         _pushUndo();
     });
     document.getElementById('phys-gravity-x-scale')?.addEventListener('change', (e) => {
-        const parsed = parseFloat(e.target.value);
-        obj.physicsGravityXScale = Number.isFinite(parsed) ? parsed : 0;
+        obj.physicsGravityXScale = parseFloat(e.target.value) ?? 0;
         if (obj._physicsBody) { try { obj._physicsBody.setAwake(true); } catch(_) {} }
         _pushUndo();
     });
@@ -451,7 +449,7 @@ export function bindPhysicsInspector(obj) {
         markDirty();
     document.getElementById('phys-col-cat')?.addEventListener('change', (e) => { obj.physicsCollisionCategory = Math.max(1, parseInt(e.target.value) || 1); _pushUndo(); });
         markDirty();
-    document.getElementById('phys-col-mask')?.addEventListener('change', (e) => { const m = parseInt(e.target.value); obj.physicsCollisionMask = Number.isFinite(m) ? m : -1; _pushUndo(); });
+    document.getElementById('phys-col-mask')?.addEventListener('change', (e) => { obj.physicsCollisionMask = parseInt(e.target.value) ?? -1; _pushUndo(); });
         markDirty();
 
     document.getElementById('phys-show-collision')?.addEventListener('click', () => {

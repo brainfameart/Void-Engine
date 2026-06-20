@@ -23,7 +23,6 @@ import {
     _camera, _updateCamera,
     clearSceneVars, clearGlobalVars,
     _registerScriptInstanceClass,
-    _bumpPlayGeneration,
     getScript,
 } from './engine.scripting.shared.js';
 import { _buildSandbox, _deepCopyObjectProps } from './engine.scripting.sandbox.js';
@@ -72,94 +71,6 @@ function _jumpEditorToError(err, code, scriptName) {
     } catch(_) {}
 }
 
-// ── Compile a script's full source (prelude + code + postlude) ────────────
-// Isolated into its own NAMED function so that if the AsyncFunction
-// constructor throws a SyntaxError, the error's call stack has at least one
-// real frame pointing here — compile-time SyntaxErrors thrown directly at
-// the top level of a try block otherwise have NO stack frames at all (this
-// is normal V8 behavior, not a bug), which makes them impossible to trace
-// back to a specific script without extra help.
-function _compileScriptSource(AsyncFunction, fullSource, scriptName, objLabel) {
-    try {
-        return new AsyncFunction('api', '__out', fullSource);
-    } catch (err) {
-        // ── Extract line/column from the error message if the browser provides one ──
-        // V8's SyntaxError messages for `new Function(...)` rarely include a
-        // location, but some do (e.g. "Unexpected token ')' (123:45)").
-        const locMatch = /\((\d+):(\d+)\)/.exec(err?.message ?? '');
-        const errLine  = locMatch ? parseInt(locMatch[1], 10) : null;
-        const errCol   = locMatch ? parseInt(locMatch[2], 10) : null;
-
-        // ── Numbered source dump — visible in DevTools OR the in-engine
-        // console, since it's pushed through both console.error() and
-        // _logConsole(). Works even on a Chromebook with no DevTools access.
-        const lines = fullSource.split('\n');
-        const numbered = lines.map((l, i) => {
-            const n = i + 1;
-            const marker = (errLine != null && n === errLine) ? ' >>> ' : '     ';
-            return `${String(n).padStart(5)}${marker}${l}`;
-        }).join('\n');
-
-        const banner = '═'.repeat(70);
-        console.error(
-            `\n${banner}\n` +
-            `ZENGINE SCRIPT COMPILE ERROR\n` +
-            `${banner}\n` +
-            `Script : "${scriptName}"\n` +
-            `Object : "${objLabel}"\n` +
-            `Error  : [${err?.name ?? 'Error'}] ${err?.message ?? err}\n` +
-            (errLine != null ? `Location: line ${errLine}, column ${errCol}\n` : `Location: not provided by the browser for this error type\n`) +
-            `${banner}\n` +
-            `FULL NUMBERED SOURCE (search for ">>> " to find the flagged line):\n` +
-            `${banner}\n` +
-            numbered +
-            `\n${banner}\n`
-        );
-
-        // Also push a compact version into the in-engine console (works on a
-        // Chromebook with no DevTools) so this is visible without F12.
-        try {
-            _logConsole(`❌ COMPILE ERROR in "${scriptName}" on "${objLabel}": ${err?.message ?? err}`, '#f87171');
-            if (errLine != null) {
-                const ctxStart = Math.max(0, errLine - 4);
-                const ctxEnd   = Math.min(lines.length, errLine + 3);
-                _logConsole(`   Near line ${errLine}, column ${errCol}:`, '#fb923c');
-                for (let i = ctxStart; i < ctxEnd; i++) {
-                    const n = i + 1;
-                    const marker = n === errLine ? '>>> ' : '    ';
-                    _logConsole(`   ${marker}${n}: ${lines[i]}`, n === errLine ? '#f87171' : '#94a3b8');
-                }
-            } else {
-                _logConsole('   (Browser did not report a line/column for this error. Full numbered source was dumped to the browser devtools console via console.error — if you cannot access devtools, the SOURCE block below has the same content.)', '#94a3b8');
-                // Chromebook-friendly fallback: dump a meaningful chunk of the
-                // user's own code (not the huge prelude) directly into the
-                // in-engine console so it's visible with zero extra tools.
-                // The user's code starts after the prelude and ends before
-                // the postlude; we approximate by showing the LAST ~40 lines
-                // of fullSource, since the prelude is fixed/static and always
-                // comes first — the tail is always the user's code + postlude.
-                const tail = lines.slice(Math.max(0, lines.length - 40));
-                _logConsole('   ── last ~40 lines of compiled source (your code is in here) ──', '#94a3b8');
-                tail.forEach((l, idx) => {
-                    const n = lines.length - tail.length + idx + 1;
-                    _logConsole(`   ${n}: ${l}`, '#94a3b8');
-                });
-            }
-        } catch (_) { /* never let logging itself break compilation error handling */ }
-
-        // Tag the error so it's identifiable wherever it's caught — including
-        // the outer try/catch in this constructor and the global
-        // unhandledrejection handler in engine.console.js.
-        err._zeSource = fullSource;
-        err._zeOrigin = 'initial script compile (_compileScriptSource)';
-        err._zeScript = scriptName;
-        err._zeObj    = objLabel;
-        err._zeLine   = errLine;
-        err._zeCol    = errCol;
-        throw err;
-    }
-}
-
 // ── Script Instance ───────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 // SMART SCRIPT SAFETY LAYER
@@ -175,7 +86,6 @@ class ScriptInstance {
     constructor(obj, name, code) {
         this.obj              = obj;
         this.name             = name;
-        this._stopped         = false;  // set true by stop() — prevents any further callbacks
         // All registered callbacks
         this._onStart         = null;
         this._onUpdate        = null;
@@ -201,45 +111,8 @@ class ScriptInstance {
 
         // instRef array so _buildSandbox can back-reference this instance
         const instRef = [null];
-        // ── _buildSandbox guard ─────────────────────────────────────────────
-        // _buildSandbox constructs the entire scripting API object (hundreds
-        // of methods/getters) for THIS object. It runs synchronously, with NO
-        // try/catch, for EVERY scripted object EVERY time Play is pressed —
-        // if anything inside it throws (not a user script error, but a real
-        // problem building the API surface itself), it propagates straight
-        // out of `new ScriptInstance(...)`, straight out of startScripts(),
-        // straight out of an unguarded `.then()` in enterPlayMode(), landing
-        // as a bare, contextless "Unhandled promise rejection" with no script
-        // name — for every object, every time. This try/catch makes that
-        // failure attributable (object name, full error, full stack) instead
-        // of silently breaking the entire play session.
-        let sandboxResult;
-        try {
-            sandboxResult = _buildSandbox(obj, instRef);
-        } catch (buildErr) {
-            const banner = '═'.repeat(70);
-            console.error(
-                `\n${banner}\n` +
-                `ZENGINE: _buildSandbox() FAILED for object "${obj.label}"\n` +
-                `${banner}\n` +
-                `Error: [${buildErr?.name ?? 'Error'}] ${buildErr?.message ?? buildErr}\n` +
-                `Stack: ${buildErr?.stack ?? '(no stack available)'}\n` +
-                `${banner}\n`
-            );
-            try {
-                _logConsole(`❌ Failed to build scripting API for object "${obj.label}": ${buildErr?.message ?? buildErr}`, '#f87171');
-                _logConsole(`   This means the engine itself hit a problem setting up scripting for this object — not a mistake in a script's code. Try removing/reattaching its script, or check if this object has an unusual physics/sprite setup.`, '#94a3b8');
-            } catch (_) { /* never let logging break error handling */ }
-            // Leave this instance non-functional but DO NOT re-throw — letting
-            // this escape would abort startScripts() partway through the
-            // gameObjects loop, leaving every object AFTER this one with no
-            // script at all. Better to skip just this one object.
-            this.api = null;
-            this._buildFailed = true;
-            return;
-        }
         const { api, _keys, _keysJustDown, _keysJustUp, _mouse,
-                _tweens, _repeats, _keyDownHandlers, _keyUpHandlers } = sandboxResult;
+                _tweens, _repeats, _keyDownHandlers, _keyUpHandlers } = _buildSandbox(obj, instRef);
         instRef[0]          = this;
         this.api            = api;
         this._keys          = _keys;
@@ -784,14 +657,6 @@ function isOnCeiling()              { return physics.isOnCeiling; }
  * Use to cancel horizontal velocity:  if (isOnWall()) { velocityX = 0; }
  */
 function isOnWall()                 { return physics.isOnWall; }
-
-/**
- * Is this body on a slope (diagonal surface — not flat enough for ground, not steep enough for wall)?
- * Use to play a slide animation or apply slope friction.
- * Kinematic bodies only.
- *   if (isOnSlope()) { velocityX *= 0.95; }
- */
-function isOnSlope()                { return physics.isOnSlope; }
 
 /**
  * Immediately stop all physics movement on this body.
@@ -2044,37 +1909,24 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             // The compiled function is cached by script code string — spawning
             // 100 objects with the same script only compiles once, not 100×.
             const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; // eslint-disable-line no-new-func
-            const fullSource = prelude + '\n' + code + '\n' + postlude;
             let fn = _scriptFnCache.get(code);
             if (!fn) {
-                // Wrapped in a NAMED function (_compileScriptSource) so that if
-                // the AsyncFunction constructor throws, V8 attributes a real
-                // stack frame to this call site instead of producing a bare
-                // "SyntaxError: missing ) after argument list" with zero frames
-                // (the default for errors thrown directly inside `new Function(...)`
-                // at the top level of a try block).
-                fn = _compileScriptSource(AsyncFunction, fullSource, this.name, this.obj.label);
+                fn = new AsyncFunction('api', '__out', prelude + '\n' + code + '\n' + postlude);
                 _scriptFnCache.set(code, fn);
             }
             const out = {};
             // Chain .catch IMMEDIATELY on the call — never store then attach separately.
             // Storing in a variable first creates a window where a synchronous microtask
             // rejection fires before .catch is attached, causing "Unhandled promise rejection".
-            runInSandbox(fn, api, out, this._sandboxIframe, fullSource).catch(_err => {
+            runInSandbox(fn, api, out, this._sandboxIframe).catch(_err => {
                 const friendly = _friendlyScriptError(_err, code, this.name, this.obj.label, 'compile');
                 for (const line of friendly) _logConsole(line, '#f87171');
                 const _rm = _err?.message ?? String(_err);
                 const _rt = _err?.name ?? 'Error';
                 const _rs = (_err?.stack ?? '').split('\n').slice(0,5).join(' | ');
                 _logConsole(`  🔍 RAW ERROR: [${_rt}] ${_rm}`, '#fb923c');
-                _logConsole(`  📋 STACK: ${_rs || '(none — typical for a compile-time SyntaxError)'}`, '#94a3b8');
-                _logConsole(`  📝 SCRIPT: "${this.name}" on object "${this.obj.label}"`, '#94a3b8');
-                if (_err?._zeSource) {
-                    const s = _err._zeSource;
-                    const preview = s.length > 1000 ? s.slice(0, 500) + '\n  …\n  ' + s.slice(-500) : s;
-                    _logConsole(`  📄 SOURCE (${_err._zeOrigin ?? 'compile'}):\n${preview}`, '#94a3b8');
-                }
-                console.error('[Zengine async compile error]', _rt + ':', _rm, '\nScript:', this.name, '\nObject:', this.obj.label, '\nFull error:', _err, '\nSource:', _err?._zeSource ?? fullSource);
+                _logConsole(`  📋 STACK: ${_rs}`, '#94a3b8');
+                console.error('[Zengine async compile error]', _rt + ':', _rm, '\nScript:', this.name, '\nFull error:', _err);
                 _jumpEditorToError(_err, code, this.name);
                 import('./engine.console.js').then(m => m.recordPlayError());
             });
@@ -2127,26 +1979,17 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             const friendly = _friendlyScriptError(err, code, this.name, this.obj.label, 'compile');
             for (const line of friendly) _logConsole(line, '#f87171');
 
-            // If this error already went through _compileScriptSource(), it was
-            // already fully dumped (numbered source, line/column, console.error
-            // banner) — avoid printing the same thing twice. Just show a short
-            // pointer to scroll up. Otherwise (error came from somewhere else in
-            // this try block, e.g. binding handlers), do the full dump here.
-            if (err?._zeOrigin) {
-                _logConsole(`  ↑ Full compile error details logged above (script: "${err._zeScript}", object: "${err._zeObj}")`, '#94a3b8');
-            } else {
-                // ── DETAILED DEBUG DUMP ──────────────────────────────────────
-                // Always log the raw error to engine console + browser devtools
-                // so you can copy/paste the full error message.
-                const _rawMsg  = err?.message ?? String(err);
-                const _rawType = err?.name    ?? 'Error';
-                const _rawStack = (err?.stack ?? '').split('\n').slice(0,5).join(' | ');
-                _logConsole(`  🔍 RAW ERROR: [${_rawType}] ${_rawMsg}`, '#fb923c');
-                _logConsole(`  📋 STACK: ${_rawStack || '(none provided by browser)'}`, '#94a3b8');
-                _logConsole(`  📝 SCRIPT: "${this.name}" on object "${this.obj.label}"`, '#94a3b8');
-                // Also dump to browser console for full stack trace
-                console.error('[Zengine compile error]', _rawType + ':', _rawMsg, '\nScript:', this.name, '\nObject:', this.obj.label, '\nFull error:', err);
-            }
+            // ── DETAILED DEBUG DUMP ──────────────────────────────────────────
+            // Always log the raw error to engine console + browser devtools
+            // so you can copy/paste the full error message.
+            const _rawMsg  = err?.message ?? String(err);
+            const _rawType = err?.name    ?? 'Error';
+            const _rawStack = (err?.stack ?? '').split('\n').slice(0,5).join(' | ');
+            _logConsole(`  🔍 RAW ERROR: [${_rawType}] ${_rawMsg}`, '#fb923c');
+            _logConsole(`  📋 STACK: ${_rawStack}`, '#94a3b8');
+            _logConsole(`  📝 SCRIPT: "${this.name}" on object "${this.obj.label}"`, '#94a3b8');
+            // Also dump to browser console for full stack trace
+            console.error('[Zengine compile error]', _rawType + ':', _rawMsg, '\nScript:', this.name, '\nObject:', this.obj.label, '\nFull error:', err);
 
             import('./engine.console.js').then(m => m.recordPlayError());
         }
@@ -2263,23 +2106,9 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             // stepPhysics runs after all scripts this frame, sweeps the sprite AABB
             // against tile/static AABBs, resolves collisions, and writes the
             // corrected position to obj.x/y. No Matter body involved.
-            //
-            // Skip this write if the object is the one currently being dragged —
-            // _applyDragThisFrame() already set _kinematicVx/Vy for this frame
-            // earlier (drag runs before scripts). Without this guard, an object
-            // that is both draggable AND has its own onUpdate velocity logic
-            // (e.g. a player character you can also pick up) would have the drag
-            // silently overridden the instant its own script ran, making drag
-            // feel broken/unresponsive on that object.
-            if (!obj.physicsImmovable && _activeDragObj !== obj) {
+            if (!obj.physicsImmovable) {
                 obj._kinematicVx =  vel.x * 100;
                 obj._kinematicVy = -vel.y * 100;
-                // A script driving velocityX/Y every frame has taken over control —
-                // clear any leftover sustained throw velocity so the two don't add
-                // together (which would double the speed for one frame, then leave
-                // a phantom drift once the script sets velocity back to 0).
-                obj._kinematicSustainedVx = 0;
-                obj._kinematicSustainedVy = 0;
             }
         } else if (hasDynamicBody) {
             // ── Dynamic: apply script velocity to physics body.
@@ -2288,12 +2117,7 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             // `velocityY = 0` actually stops the body — without the dirty flag, the
             // `vel.y === 0` case would be silently skipped and the body would keep
             // its momentum from gravity/previous frames.
-            //
-            // Skip while this object is the active drag target — _applyDragThisFrame()
-            // already drove the body's velocity toward the cursor this frame (drag runs
-            // before scripts). Without this guard, a draggable object that also has its
-            // own onUpdate velocity logic would have the drag overridden every frame.
-            if (obj._velDirty && _activeDragObj !== obj) {
+            if (obj._velDirty) {
                 obj._velDirty = false;
                 // Only override components the script explicitly touched, blending
                 // with the current physics velocity for components left untouched.
@@ -2304,19 +2128,11 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
                 obj._physicsBody.setAwake(true);
                 obj._velSetX = false;
                 obj._velSetY = false;
-            } else if (_activeDragObj === obj) {
-                // Drop the dirty flag without applying — the drag's velocity write wins.
-                obj._velDirty = false;
-                obj._velSetX  = false;
-                obj._velSetY  = false;
             }
         } else {
             // ── No physics body — pure scripting movement ──────────────
-            // Skip while this object is being dragged so the drag stays in control.
-            if (_activeDragObj !== obj) {
-                if (vel.x !== 0) obj.x +=  vel.x * dt * 100;
-                if (vel.y !== 0) obj.y -= vel.y * dt * 100;
-            }
+            if (vel.x !== 0) obj.x +=  vel.x * dt * 100;
+            if (vel.y !== 0) obj.y -= vel.y * dt * 100;
         }
 
         // ── 5. onLand detection (kinematic and dynamic) ────────────
@@ -2358,12 +2174,6 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
     }
 
     stop() {
-        // Mark stopped FIRST — any pending wait()/repeat()/promise callbacks
-        // that fire after this point will see _stopped=true and no-op,
-        // instead of mutating an object that belongs to the next scene.
-        // (Mirrors Unity's "destroyed MonoBehaviour" guard and Godot's
-        // is_inside_tree() check — prevents rapid scene-restart glitches.)
-        this._stopped = true;
         // Release the sandbox iframe back to the pool for reuse
         if (this._sandboxIframe) {
             releaseSandboxIframe(this._sandboxIframe);
@@ -2592,27 +2402,14 @@ let _throwVelY   = 0;   // current throw velocity Y (world units/sec)
 let _throwPrevX  = 0;   // previous frame world X
 let _throwPrevY  = 0;   // previous frame world Y
 
-// ── Global canvas-relative mouse position ────────────────────
-// Updated by _mm regardless of which instance is active, so
-// drag works correctly even on objects without a script attached
-// (avoids "no instance → fall back to _instances[0]" lag bug).
-let _globalCanvasMX = 0;
-let _globalCanvasMY = 0;
-
 function _applyDragThisFrame(dt) {
     if (!_activeDragObj) return;
     const sc = state.sceneContainer;
     if (!sc) return;
-    // Use the global mouse position — works even if the dragged object has no script instance.
-    // Falls back to any live instance's mouse only as a last resort.
-    let cx = _globalCanvasMX;
-    let cy = _globalCanvasMY;
-    if (cx === 0 && cy === 0) {
-        const inst = _instances.find(i => i.obj === _activeDragObj) ?? _instances[0];
-        if (!inst) return;
-        cx = inst._mouse.x;
-        cy = inst._mouse.y;
-    }
+    const inst = _instances.find(i => i.obj === _activeDragObj) ?? _instances[0];
+    if (!inst) return;
+    const cx = inst._mouse.x;
+    const cy = inst._mouse.y;
     const targetX =  (cx - sc.x) / (sc.scale.x * 100) + (_activeDragOpts.offsetX ?? 0);
     const targetY = -(cy - sc.y) / (sc.scale.y * 100) + (_activeDragOpts.offsetY ?? 0);
     const smooth = _activeDragOpts.smooth ?? 0;
@@ -2648,55 +2445,43 @@ function _applyDragThisFrame(dt) {
     const ptype      = draggedObj.physicsBody;
 
     if (ptype === 'dynamic' && draggedObj._physicsBody && window.planck) {
-        // ── Dynamic: drive the body with VELOCITY toward the mouse, the same
-        // way Box2D's MouseJoint works (and what Unity/Godot physics drag is
-        // built on under the hood). Using body.setTransform() to teleport the
-        // body every frame bypasses Planck's collision solver entirely, so a
-        // dragged object would tunnel straight through walls and other bodies
-        // — that was the "drag doesn't work as expected" bug for dynamic
-        // objects. Velocity-based dragging lets normal collision response
-        // (the body slows/stops against obstacles) keep working while held.
-        const body    = draggedObj._physicsBody;
-        const realDt  = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
-        const pos     = body.getPosition();
-        const targetX = wx * 100;
-        const targetY = -wy * 100;
-        // Critically-damped spring toward the target — strong enough to track
-        // the mouse closely, soft enough that colliding with a wall actually
-        // stops it instead of overpowering the solver.
-        const stiffness = _activeDragOpts.stiffness ?? 18; // higher = snappier follow
-        const dvx = (targetX - pos.x) * stiffness;
-        const dvy = (targetY - pos.y) * stiffness;
-        body.setLinearVelocity(window.planck.Vec2(dvx, dvy));
+        // ── Dynamic: move the Planck body directly each frame.
+        // Zero ALL velocity (linear + angular + gravity contribution) so the body
+        // stays exactly under the finger instead of sinking or jittering.
+        const body = draggedObj._physicsBody;
+        const off  = body._zenOffset || { x: 0, y: 0 };
+        const ang  = body.getAngle();
+        const cosR = Math.cos(ang);
+        const sinR = Math.sin(ang);
+        body.setTransform(
+            window.planck.Vec2(
+                wx * 100 + off.x * cosR - off.y * sinR,
+                -wy * 100 + off.x * sinR + off.y * cosR
+            ),
+            ang
+        );
+        body.setLinearVelocity(window.planck.Vec2(0, 0));
         body.setAngularVelocity(0);
         body.setAwake(true);
-        // obj.x/y are kept in sync by the existing dynamic→sprite sync step
-        // that already runs every frame for all dynamic bodies — no need to
-        // write draggedObj.x/y here, and doing so would fight the physics sim.
+        // Sync PIXI position from Planck so they stay in agreement
+        draggedObj.x =  wx * 100;
+        draggedObj.y = -wy * 100;
 
     } else if (ptype === 'kinematic') {
-        // ── Kinematic: drive the SAT sweep via velocity — do NOT also write
-        // position directly. Writing position after setting velocity discarded
-        // whatever collision correction the sweep applied (the object would
-        // snap straight back to the mouse position even after hitting a wall),
-        // which is the "drag doesn't work as expected — tunnels through walls"
-        // bug. The sweep in stepPhysics is the single source of truth for the
-        // resulting obj.x/y, same as Unity's Rigidbody.MovePosition or Godot's
-        // move_and_collide — both let the physics step resolve the move rather
-        // than teleporting the transform afterward.
+        // ── Kinematic: write velocity so the physics SAT sweep carries the object
+        // smoothly this frame instead of treating it as a raw teleport.
+        // Velocity is in px/sec (engine internal units).
         const realDt = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
         const prevX  = draggedObj._kinematicPrevX ?? draggedObj.x;
         const prevY  = draggedObj._kinematicPrevY ?? draggedObj.y;
         const desiredX =  wx * 100;
         const desiredY = -wy * 100;
-        // Express the desired displacement as a velocity for this frame —
-        // stepPhysics sweeps from the current position toward this velocity
-        // and stops the object early if it hits a wall/floor.
+        // Express the desired displacement as a velocity for this frame
         draggedObj._kinematicVx = (desiredX - prevX) / realDt;
         draggedObj._kinematicVy = (desiredY - prevY) / realDt;
-        // Any sustained throw velocity is cancelled the moment you grab the object.
-        draggedObj._kinematicSustainedVx = 0;
-        draggedObj._kinematicSustainedVy = 0;
+        // Also write position directly so smooth lerp lag doesn't drift
+        draggedObj.x = desiredX;
+        draggedObj.y = desiredY;
 
     } else {
         // ── No physics body (none / static): direct position write.
@@ -2732,28 +2517,20 @@ export function _applyThrowVelocity(obj) {
         obj._physicsBody.setAwake(true);
 
     } else if (ptype === 'kinematic') {
-        // Kinematic: write into BOTH the scripting velocity (_vel) AND the
-        // sustained velocity slot.
-        //   - api._vel: if this object has a script, its update() loop reads
-        //     this every frame and re-feeds _kinematicVx/Vy — this is what
-        //     lets onUpdate code like `if (isOnGround()) velocityY = 0` take
-        //     over control of a thrown object immediately.
-        //   - _kinematicSustainedVx/Vy: read directly by stepPhysics every
-        //     frame regardless of whether a script exists. This is what makes
-        //     throwObject()/makeThrowable() work on objects with NO script —
-        //     without it the object would move for exactly one physics tick
-        //     (the velocity is normally a one-shot per-frame input) and then
-        //     stop, which is the "throw doesn't work as expected" bug.
+        // Kinematic: write into the scripting velocity (_vel) so the value persists
+        // across frames. The update loop converts _vel → _kinematicVx/_kinematicVy
+        // each frame, which is what the SAT sweep reads.
+        // Writing _kinematicVx directly is NOT sufficient — it gets cleared after
+        // each physics step, causing a one-frame-only movement.
         const api = _instances.find(i => i.obj === obj)?.api;
         if (api) {
             api._vel = api._vel ?? { x: 0, y: 0 };
             api._vel.x = vx;
             api._vel.y = vy;
         }
-        obj._kinematicVx          =  vx * 100; // seed this frame immediately
-        obj._kinematicVy          = -vy * 100;
-        obj._kinematicSustainedVx =  vx * 100; // persists frame-to-frame
-        obj._kinematicSustainedVy = -vy * 100;
+        // Also seed the kinematic slots for the very next frame (before update() runs)
+        obj._kinematicVx =  vx * 100;
+        obj._kinematicVy = -vy * 100;
 
     } else {
         // No physics body: write into _vel for sustained movement
@@ -3158,9 +2935,6 @@ function _mm(e) {
     const r = c.getBoundingClientRect();
     const cx = e.clientX - r.left;
     const cy = e.clientY - r.top;
-    // Always update global position first — used by drag for objects without a script
-    _globalCanvasMX = cx;
-    _globalCanvasMY = cy;
     for (const i of _instances) i._handleMouseMove(cx, cy);
 }
 function _md(e) {
@@ -3240,8 +3014,6 @@ function _tm(e) {
     const r = state.app.view.getBoundingClientRect();
     const cx = t.clientX - r.left;
     const cy = t.clientY - r.top;
-    _globalCanvasMX = cx;
-    _globalCanvasMY = cy;
     for (const i of _instances) i._handleMouseMove(cx, cy);
 }
 let _muTouchPos = null;
@@ -3285,7 +3057,6 @@ function _runCollisionStayChecks() {
 
 // ── Start scripts (enterPlayMode) ─────────────────────────────
 export function startScripts() {
-  try {
     stopScripts();
     _clearRegistries();
     _camera._followTarget = null;
@@ -3298,19 +3069,7 @@ export function startScripts() {
             _logConsole(`[Scripting] Script "${obj.scriptName}" not found for "${obj.label}"`, '#facc15');
             continue;
         }
-        // Guard each object's ScriptInstance construction individually so a
-        // failure on ONE object (engine-level, not a script syntax error —
-        // those are already caught inside ScriptInstance itself) doesn't aim
-        // an unhandled rejection at the whole Play session and doesn't skip
-        // every object that comes after it in this loop.
-        let inst;
-        try {
-            inst = new ScriptInstance(obj, obj.scriptName, rec.code);
-        } catch (instErr) {
-            console.error(`[Zengine] Failed to create ScriptInstance for "${obj.label}" (script "${obj.scriptName}"):`, instErr);
-            _logConsole(`❌ Could not start script "${obj.scriptName}" on "${obj.label}": ${instErr?.message ?? instErr}`, '#f87171');
-            continue;
-        }
+        const inst = new ScriptInstance(obj, obj.scriptName, rec.code);
         _instances.push(inst);
         _registerInstance(inst);
         count++;
@@ -3320,13 +3079,7 @@ export function startScripts() {
 
     // Fire onStart for all instances after all are registered
     // (so messaging and findWithTag work in onStart)
-    for (const i of _instances) {
-        try { i.start(); }
-        catch (startErr) {
-            console.error(`[Zengine] onStart threw for "${i.obj?.label}" (script "${i.name}"):`, startErr);
-            _logConsole(`❌ onStart error in "${i.name}" on "${i.obj?.label}": ${startErr?.message ?? startErr}`, '#f87171');
-        }
-    }
+    for (const i of _instances) i.start();
 
     window.addEventListener('keydown',   _kd);
     window.addEventListener('keyup',     _ku);
@@ -3344,9 +3097,7 @@ export function startScripts() {
     // Cache playmode reference so we can update the camera mask each frame
     // without a per-frame dynamic import (which is expensive).
     let _playmodeRef = null;
-    import('./engine.playmode.js').then(m => { _playmodeRef = m; }).catch(e => {
-        console.error('[Zengine] Failed to load engine.playmode.js reference:', e);
-    });
+    import('./engine.playmode.js').then(m => { _playmodeRef = m; });
 
     let _last = performance.now();
     _ticker = () => {
@@ -3392,35 +3143,11 @@ export function startScripts() {
         if (_physicsModule) {
             _physicsModule.stepPhysics(dt);
         } else {
-            import('./engine.physics.js').then(m => { _physicsModule = m; m.stepPhysics(dt); }).catch(e => {
-                console.error('[Zengine] Failed to load engine.physics.js / step physics:', e);
-            });
+            import('./engine.physics.js').then(m => { _physicsModule = m; m.stepPhysics(dt); });
         }
     };
     state.app.ticker.add(_ticker);
     _logConsole(`▶ Scripts: ${count} instance${count!==1?'s':''} running`, '#4ade80');
-  } catch (fatalErr) {
-    // ── Absolute last resort ─────────────────────────────────────────────
-    // startScripts() is called as `import(...).then(m => m.startScripts())`
-    // with NO .catch() in enterPlayMode() — if anything above throws
-    // synchronously and escapes uncaught, it becomes a bare, contextless
-    // "Unhandled promise rejection" with no script/object name, on EVERY
-    // Play press, for EVERY object — which matches "almost everything I do
-    // shows that error" far better than a single broken script would. This
-    // catch guarantees that can never happen again: whatever goes wrong here
-    // is now fully reported, with a stack trace, instead of vanishing into a
-    // bare message.
-    const banner = '═'.repeat(70);
-    console.error(
-        `\n${banner}\nZENGINE: startScripts() FAILED — Play Mode could not fully start\n${banner}\n` +
-        `Error: [${fatalErr?.name ?? 'Error'}] ${fatalErr?.message ?? fatalErr}\n` +
-        `Stack: ${fatalErr?.stack ?? '(no stack available)'}\n${banner}\n`
-    );
-    try {
-        _logConsole(`❌ FATAL: startScripts() failed — ${fatalErr?.message ?? fatalErr}`, '#f87171');
-        _logConsole(`   This is an engine-level failure, not a single broken script. See browser console for full stack.`, '#94a3b8');
-    } catch (_) { /* never let logging break error handling */ }
-  }
 }
 
 // ── Transition freeze flag ────────────────────────────────────
@@ -3432,7 +3159,6 @@ export function unfreezeScripts()      { _scriptsFrozenDuringTransition = false;
 
 // ── Stop scripts (stopPlayMode) ───────────────────────────────
 export function stopScripts() {
-    _bumpPlayGeneration(); // invalidate any in-flight cloneSelf/wait/import().then() callbacks
     _scriptsFrozenDuringTransition = false; // always unfreeze on stop
     for (const i of _instances) i.stop();
     _instances.length = 0;
@@ -3448,7 +3174,6 @@ export function stopScripts() {
     _activeDragObj  = null;
     _activeDragOpts = {};
     _throwVelX = _throwVelY = _throwPrevX = _throwPrevY = 0;
-    _globalCanvasMX = 0; _globalCanvasMY = 0;
     _activeTouches  = [];
     if (_ticker && state.app) { state.app.ticker.remove(_ticker); _ticker = null; }
     window.removeEventListener('keydown',   _kd);

@@ -112,7 +112,6 @@ function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
 
         destroy()                { _c('destroy',[]); },
         setVelocity(vx,vy)       { _c('setVelocity',[vx,vy]); },
-        setPhysicsVelocity(vx,vy){ _c('setPhysicsVelocity',[vx,vy]); },
         stopMovement()           { _c('stopMovement',[]); },
         bounceX()                { _c('bounceX',[]); },
         bounceY()                { _c('bounceY',[]); },
@@ -142,10 +141,8 @@ function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
         setRotationLocked(v)     { _c('setRotationLocked',[v]); },
         applyForce(fx,fy)        { _c('applyForce',[fx,fy]); },
         applyImpulse(ix,iy)      { _c('applyImpulse',[ix,iy]); },
-        addImpulse(ix,iy)        { _c('applyImpulse',[ix,iy]); },
         setAngularVelocity(r)    { _c('setAngularVelocity',[r]); },
         stopPhysics()            { _c('stopPhysics',[]); },
-        setGravityScale(s)       { _c('setGravityScale',[s]); },
         setPhysicsType(t)        { _c('setPhysicsType',[t]); },
         setCollision(v)          { _c('setCollision',[v]); },
         setSensor(v)             { _c('setSensor',[v]); },
@@ -167,18 +164,6 @@ function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
         hitFlash(col,dur)        { _c('hitFlash',[col,dur]); },
         objectShake(amp,dur)     { _c('objectShake',[amp,dur]); },
         destroyAfter(secs)       { _c('destroyAfter',[secs]); },
-        show()                   { _c('show',[]); },
-        hide()                   { _c('hide',[]); },
-        setX(v)                  { _c('setX',[v]); },
-        setY(v)                  { _c('setY',[v]); },
-        setRotation(deg)         { _c('setRotation',[deg]); },
-        setScaleX(v)             { _c('setScaleX',[v]); },
-        setScaleY(v)             { _c('setScaleY',[v]); },
-        setZOrder(v)             { _c('setZOrder',[v]); },
-        setVisible(v)            { _c('setVisible',[v]); },
-        setAlpha(v)              { _c('setAlpha',[v]); },
-        setTag(t)                { _c('setTag',[t]); },
-        setGroup(g)              { _c('setGroup',[g]); },
         setText(v)               { _c('setText',[v]); },
         setTextStyle(o)          { _c('setTextStyle',[o]); },
         say(text,dur)            { _c('say',[text,dur]); },
@@ -186,22 +171,6 @@ function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
         soundPlay(name,opts)     { _c('soundPlay',[name,opts]); },
         soundStop(name)          { _c('soundStop',[name]); },
         raycastFromSelf(d,m,o)   { return _realProxy ? _realProxy.raycastFromSelf(d,m,o) : null; },
-        getX()                   { return _realProxy ? _realProxy.getX()       : spawnX; },
-        getY()                   { return _realProxy ? _realProxy.getY()       : spawnY; },
-        getRotation()            { return _realProxy ? _realProxy.getRotation(): 0; },
-        getScaleX()              { return _realProxy ? _realProxy.getScaleX()  : 1; },
-        getScaleY()              { return _realProxy ? _realProxy.getScaleY()  : 1; },
-        getZOrder()              { return _realProxy ? _realProxy.getZOrder()  : 0; },
-        getVisible()             { return _realProxy ? _realProxy.getVisible() : true; },
-        getAlpha()               { return _realProxy ? _realProxy.getAlpha()   : 1; },
-        getTag()                 { return _realProxy ? _realProxy.getTag()     : ''; },
-        getGroup()               { return _realProxy ? _realProxy.getGroup()   : ''; },
-        getVelX()                { return _realProxy ? _realProxy.getVelX()   : 0; },
-        getVelY()                { return _realProxy ? _realProxy.getVelY()   : 0; },
-        isOnGround()             { return _realProxy ? _realProxy.isOnGround() : false; },
-        isOnCeiling()            { return _realProxy ? _realProxy.isOnCeiling(): false; },
-        isOnWall()               { return _realProxy ? _realProxy.isOnWall()   : false; },
-        isOnSlope()              { return _realProxy ? _realProxy.isOnSlope()  : false; },
     };
     return dp;
 }
@@ -363,51 +332,6 @@ function _makeProxy(f) {
         get width()   { return (f.spriteGraphic?.width  ?? 100) / 100; },
         get height()  { return (f.spriteGraphic?.height ?? 100) / 100; },
 
-        // ── Convenience get/set methods (no script required) ─────────────────
-        // These mirror the sandbox API so you can call them on a stored proxy.
-        getX()          { return  f.x / 100; },
-        setX(v)         { f.x =  +v * 100; if (f.physicsBody === 'kinematic') f._kinematicPrevX = f.x; },
-        getY()          { return -f.y / 100; },
-        setY(v)         { f.y = -+v * 100; if (f.physicsBody === 'kinematic') f._kinematicPrevY = f.y; },
-        getRotation()   { return -(f.rotation * 180 / Math.PI); },
-        setRotation(deg) {
-            f.rotation = -(+deg * Math.PI / 180);
-            if (f.spriteGraphic) f.spriteGraphic.rotation = f.rotation;
-            if (f._runtimeSprite) f._runtimeSprite.rotation = f.rotation;
-        },
-        getScaleX()     { return f.scale?.x ?? 1; },
-        setScaleX(v)    {
-            if (!f.scale) f.scale = { x: 1, y: 1 };
-            f.scale.x = +v;
-            if (f.spriteGraphic) f.spriteGraphic.scale.x = +v;
-        },
-        getScaleY()     { return f.scale?.y ?? 1; },
-        setScaleY(v)    {
-            if (!f.scale) f.scale = { x: 1, y: 1 };
-            f.scale.y = +v;
-            if (f.spriteGraphic) f.spriteGraphic.scale.y = +v;
-        },
-        getZOrder()     { return f.unityZ ?? 0; },
-        setZOrder(v)    { f.unityZ = +v; },
-        getVisible()    { return f.visible !== false; },
-        setVisible(v)   {
-            f.visible = !!v;
-            if (f.spriteGraphic) f.spriteGraphic.visible = !!v;
-            if (f._runtimeSprite) f._runtimeSprite.visible = !!v;
-        },
-        show()          { this.setVisible(true); },
-        hide()          { this.setVisible(false); },
-        getAlpha()      { return f.alpha ?? 1; },
-        setAlpha(v)     {
-            f.alpha = Math.max(0, Math.min(1, +v));
-            if (f.spriteGraphic) f.spriteGraphic.alpha = f.alpha;
-            if (f._runtimeSprite) f._runtimeSprite.alpha = f.alpha;
-        },
-        getGroup()      { return f._scriptGroup ?? ''; },
-        setGroup(g)     { f._scriptGroup = String(g); const i = _inst(); if (i) i.obj._scriptGroup = String(g); },
-        getTag()        { return f._scriptTag ?? ''; },
-        setTag(t)       { f._scriptTag = String(t); const i = _inst(); if (i) i.obj._scriptTag = String(t); },
-
         // ── Physics body type ─────────────────────────────────────────────────
         get physicsType() { return f.physicsBody ?? 'none'; },
         set physicsType(v) { const i = _inst(); if (i) i.api.setPhysicsType(v); else f.physicsBody = v; },
@@ -453,8 +377,6 @@ function _makeProxy(f) {
                 ));
             }
         },
-        // addImpulse — Unity/Godot style alias for applyImpulse
-        addImpulse(ix, iy) { this.applyImpulse(ix, iy); },
         setAngularVelocity(r) {
             if (window.planck && f._physicsBody && f.physicsBody === 'dynamic') {
                 f._physicsBody.setAngularVelocity(r * Math.PI / 180);
@@ -466,61 +388,10 @@ function _makeProxy(f) {
                 f._pendingKinematicDelta = { x: 0, y: 0 };
             } else if (window.planck && f._physicsBody) {
                 f._physicsBody.setLinearVelocity(window.planck.Vec2(0, 0));
-                f._physicsBody.setAngularVelocity(0);
             }
         },
-        // Set gravity scale on this body — works without a script instance
-        setGravityScale(s) {
-            f.physicsGravityScale = +s;
-            // physicsGravityScale is read each frame by the dynamic loop — no rebuild needed
-        },
-        // Set physics velocity directly (world units/sec). Works for dynamic and kinematic.
-        setPhysicsVelocity(vx, vy) {
-            if (f.physicsBody === 'kinematic') {
-                f._kinematicVx =  +vx * 100;
-                f._kinematicVy = -+vy * 100;
-            } else if (window.planck && f._physicsBody) {
-                f._physicsBody.setLinearVelocity(window.planck.Vec2(+vx * 100, -+vy * 100));
-                f._physicsBody.setAwake(true);
-            }
-        },
-        getVelX() {
-            if (f.physicsBody === 'kinematic') return (f._kinematicActualVx ?? 0) / 100;
-            return (f._physicsBody?.getLinearVelocity()?.x ?? 0) / 100;
-        },
-        getVelY() {
-            if (f.physicsBody === 'kinematic') return -(f._kinematicActualVy ?? 0) / 100;
-            return -(f._physicsBody?.getLinearVelocity()?.y ?? 0) / 100;
-        },
 
-        // ── Ground / wall / slope state (no script required) ─────────────────
-        isOnGround()  { return !!f._isOnGround; },
-        isOnCeiling() { return !!f._isOnCeiling; },
-        isOnWall()    { return !!f._isOnWall; },
-        isOnSlope()   { return !!f._isOnSlope; },
-
-        // physics sub-object — gives access to full physics API when target has a script,
-        // AND now exposes read-only state for objects without one
-        get physics() {
-            const i = _inst();
-            if (i) return i.api.physics;
-            // Lightweight shim for objects without a script so you can still read state
-            return {
-                get isOnGround()  { return !!f._isOnGround; },
-                get isOnCeiling() { return !!f._isOnCeiling; },
-                get isOnWall()    { return !!f._isOnWall; },
-                get isOnSlope()   { return !!f._isOnSlope; },
-                get velX() {
-                    if (f.physicsBody === 'kinematic') return (f._kinematicActualVx ?? 0) / 100;
-                    return (f._physicsBody?.getLinearVelocity()?.x ?? 0) / 100;
-                },
-                get velY() {
-                    if (f.physicsBody === 'kinematic') return -(f._kinematicActualVy ?? 0) / 100;
-                    return -(f._physicsBody?.getLinearVelocity()?.y ?? 0) / 100;
-                },
-                get immovable() { return !!f.physicsImmovable; },
-            };
-        },
+        get physics() { const i = _inst(); return i ? i.api.physics : null; },
 
         // ── Health ────────────────────────────────────────────────────────────
         get health()  { return f._health ?? 100; },
