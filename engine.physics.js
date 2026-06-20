@@ -820,15 +820,24 @@ function _sweepSAT(shape, dx, dy, statics) {
 //   Ground:  contact pushes player UP   → mtv.ny < 0,  |mtv.ny| ≥ FLOOR_DOT
 //   Ceiling: contact pushes player DOWN → mtv.ny > 0,  |mtv.ny| ≥ FLOOR_DOT
 //   Wall:    contact pushes player sideways → |mtv.nx| ≥ FLOOR_DOT
-function _probeGround(shape, statics) {
+// Returns 'ground' (flat, walkable, within FLOOR_DOT of horizontal),
+// 'slope' (pushes upward but steeper than the walkable cone — a real
+// object here would slide), or null (nothing below).
+function _probeGroundType(shape, statics) {
     const probed = _translateShape(shape, 0, PROBE_DIST);
+    let best = null; // steepest qualifying contact wins (most physically relevant)
     for (const s of statics) {
         const mtv = _satCompound(probed.parts, s.verts);
         if (!mtv) continue;
-        // Normal must push player mostly UP (floor-like angle ≤ 45° from horizontal)
-        if (mtv.ny < -FLOOR_DOT) return true;
+        if (mtv.ny < -FLOOR_DOT) return 'ground'; // flat floor — no need to keep looking
+        // Upward-ish push but outside the walkable cone = slope. Same 0.1..FLOOR_DOT
+        // band used by the sweep classifier, so idle and moving frames agree.
+        if (mtv.ny < -0.1) best = 'slope';
     }
-    return false;
+    return best;
+}
+function _probeGround(shape, statics) {
+    return _probeGroundType(shape, statics) === 'ground';
 }
 function _probeCeiling(shape, statics) {
     const probed = _translateShape(shape, 0, -PROBE_DIST);
@@ -964,10 +973,11 @@ export function stepPhysics(dt) {
             // scripts that zero velocityY on isOnCeiling() to kill gravity and float.
             // Ceiling contact is only meaningful when the body actually swept into one.
             const idleShape = _getKinematicShape(obj);
-            obj._isOnGround  = _probeGround(idleShape, statics);
+            const idleGroundType = _probeGroundType(idleShape, statics);
+            obj._isOnGround  = idleGroundType === 'ground';
             obj._isOnCeiling = false;
-            obj._isOnWall    = false;
-            obj._isOnSlope   = false;
+            obj._isOnWall    = idleGroundType ? false : _probeWall(idleShape, statics);
+            obj._isOnSlope   = idleGroundType === 'slope';
             obj._kinematicActualVx = 0;
             obj._kinematicActualVy = 0;
             obj._kinematicPrevX = obj.x;
@@ -1092,10 +1102,11 @@ export function stepPhysics(dt) {
             else if (n.ny < -0.1)                    sweepOnSlope   = true;
         }
         const finalShape = _getKinematicShape(obj);
-        obj._isOnGround  = sweepOnGround  || _probeGround(finalShape, subStatics);
+        const finalGroundType = _probeGroundType(finalShape, subStatics);
+        obj._isOnGround  = sweepOnGround  || finalGroundType === 'ground';
         obj._isOnCeiling = sweepOnCeiling;
         obj._isOnWall    = sweepOnWall    || (!sweepOnGround && !sweepOnCeiling && (hitLeft || hitRight));
-        obj._isOnSlope   = sweepOnSlope && !sweepOnGround;
+        obj._isOnSlope   = (sweepOnSlope || finalGroundType === 'slope') && !obj._isOnGround;
 
         // ── Sustained velocity decay (thrown scriptless objects) ────────────
         // Kinematic bodies have NO gravity by engine design (script-controlled
@@ -1240,7 +1251,7 @@ export function stepPhysics(dt) {
         // |push.x| dominates (wall-like angle)               → wall   → isOnWall
         // Only surfaces within 45° of horizontal register as floor or ceiling;
         // steep walls and angled surfaces at >45° from horizontal are walls.
-        let onGround = false, onCeiling = false, onWall = false;
+        let onGround = false, onCeiling = false, onWall = false, onSlope = false;
         for (let ce = body.getContactList(); ce; ce = ce.next) {
             const contact = ce.contact;
             if (!contact || !contact.isTouching()) continue;
@@ -1255,13 +1266,21 @@ export function stepPhysics(dt) {
             if      (py >=  FLOOR_DOT)           onGround  = true;
             else if (py <= -FLOOR_DOT)           onCeiling = true;
             else if (Math.abs(px) >= FLOOR_DOT)  onWall    = true;
+            // Slope: surface pushes upward but not enough to count as flat floor —
+            // a real object resting here (outside the friction cone) would slide down.
+            // Same 0.1..FLOOR_DOT band as the kinematic sweep classifier above.
+            else if (py > 0.1)                   onSlope   = true;
         }
         obj._isOnGround  = onGround;
         obj._isOnCeiling = onCeiling;
         obj._isOnWall    = onWall;
+        obj._isOnSlope   = onSlope && !onGround;
 
         // ── Full sleep ───────────────────────────────────────────
-        if (speed < SLEEP_SPEED && Math.abs(omega) < SLEEP_OMEGA) {
+        // Skip sleep entirely on a slope: gravity has a real component along
+        // the surface there, so a momentarily-slow tire/box should keep being
+        // accelerated by the simulation instead of getting frozen mid-incline.
+        if (!onSlope && speed < SLEEP_SPEED && Math.abs(omega) < SLEEP_OMEGA) {
             body.setLinearVelocity(P.Vec2(0, 0));
             body.setAngularVelocity(0);
             body.setAwake(false);
@@ -1278,7 +1297,10 @@ export function stepPhysics(dt) {
         if (vy > 0 && onGround && Math.abs(vy) < BOUNCE_KILL_Y) vy = 0;
 
         // ── Bounce-kill on X ─────────────────────────────────────
-        if (Math.abs(vx) < BOUNCE_KILL_X) vx = 0;
+        // Only kills lingering bounce jitter on flat ground/walls. On a slope,
+        // slow horizontal speed is often the start of a real roll/slide under
+        // gravity — zeroing it here would stop a tire before it can build speed.
+        if (!onSlope && Math.abs(vx) < BOUNCE_KILL_X) vx = 0;
 
         // ── Angular rest ─────────────────────────────────────────
         const newOmega = Math.abs(omega) < SLEEP_OMEGA ? 0 : omega;
