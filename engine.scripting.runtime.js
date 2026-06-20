@@ -201,8 +201,45 @@ class ScriptInstance {
 
         // instRef array so _buildSandbox can back-reference this instance
         const instRef = [null];
+        // ── _buildSandbox guard ─────────────────────────────────────────────
+        // _buildSandbox constructs the entire scripting API object (hundreds
+        // of methods/getters) for THIS object. It runs synchronously, with NO
+        // try/catch, for EVERY scripted object EVERY time Play is pressed —
+        // if anything inside it throws (not a user script error, but a real
+        // problem building the API surface itself), it propagates straight
+        // out of `new ScriptInstance(...)`, straight out of startScripts(),
+        // straight out of an unguarded `.then()` in enterPlayMode(), landing
+        // as a bare, contextless "Unhandled promise rejection" with no script
+        // name — for every object, every time. This try/catch makes that
+        // failure attributable (object name, full error, full stack) instead
+        // of silently breaking the entire play session.
+        let sandboxResult;
+        try {
+            sandboxResult = _buildSandbox(obj, instRef);
+        } catch (buildErr) {
+            const banner = '═'.repeat(70);
+            console.error(
+                `\n${banner}\n` +
+                `ZENGINE: _buildSandbox() FAILED for object "${obj.label}"\n` +
+                `${banner}\n` +
+                `Error: [${buildErr?.name ?? 'Error'}] ${buildErr?.message ?? buildErr}\n` +
+                `Stack: ${buildErr?.stack ?? '(no stack available)'}\n` +
+                `${banner}\n`
+            );
+            try {
+                _logConsole(`❌ Failed to build scripting API for object "${obj.label}": ${buildErr?.message ?? buildErr}`, '#f87171');
+                _logConsole(`   This means the engine itself hit a problem setting up scripting for this object — not a mistake in a script's code. Try removing/reattaching its script, or check if this object has an unusual physics/sprite setup.`, '#94a3b8');
+            } catch (_) { /* never let logging break error handling */ }
+            // Leave this instance non-functional but DO NOT re-throw — letting
+            // this escape would abort startScripts() partway through the
+            // gameObjects loop, leaving every object AFTER this one with no
+            // script at all. Better to skip just this one object.
+            this.api = null;
+            this._buildFailed = true;
+            return;
+        }
         const { api, _keys, _keysJustDown, _keysJustUp, _mouse,
-                _tweens, _repeats, _keyDownHandlers, _keyUpHandlers } = _buildSandbox(obj, instRef);
+                _tweens, _repeats, _keyDownHandlers, _keyUpHandlers } = sandboxResult;
         instRef[0]          = this;
         this.api            = api;
         this._keys          = _keys;
@@ -3248,6 +3285,7 @@ function _runCollisionStayChecks() {
 
 // ── Start scripts (enterPlayMode) ─────────────────────────────
 export function startScripts() {
+  try {
     stopScripts();
     _clearRegistries();
     _camera._followTarget = null;
@@ -3260,7 +3298,19 @@ export function startScripts() {
             _logConsole(`[Scripting] Script "${obj.scriptName}" not found for "${obj.label}"`, '#facc15');
             continue;
         }
-        const inst = new ScriptInstance(obj, obj.scriptName, rec.code);
+        // Guard each object's ScriptInstance construction individually so a
+        // failure on ONE object (engine-level, not a script syntax error —
+        // those are already caught inside ScriptInstance itself) doesn't aim
+        // an unhandled rejection at the whole Play session and doesn't skip
+        // every object that comes after it in this loop.
+        let inst;
+        try {
+            inst = new ScriptInstance(obj, obj.scriptName, rec.code);
+        } catch (instErr) {
+            console.error(`[Zengine] Failed to create ScriptInstance for "${obj.label}" (script "${obj.scriptName}"):`, instErr);
+            _logConsole(`❌ Could not start script "${obj.scriptName}" on "${obj.label}": ${instErr?.message ?? instErr}`, '#f87171');
+            continue;
+        }
         _instances.push(inst);
         _registerInstance(inst);
         count++;
@@ -3270,7 +3320,13 @@ export function startScripts() {
 
     // Fire onStart for all instances after all are registered
     // (so messaging and findWithTag work in onStart)
-    for (const i of _instances) i.start();
+    for (const i of _instances) {
+        try { i.start(); }
+        catch (startErr) {
+            console.error(`[Zengine] onStart threw for "${i.obj?.label}" (script "${i.name}"):`, startErr);
+            _logConsole(`❌ onStart error in "${i.name}" on "${i.obj?.label}": ${startErr?.message ?? startErr}`, '#f87171');
+        }
+    }
 
     window.addEventListener('keydown',   _kd);
     window.addEventListener('keyup',     _ku);
@@ -3288,7 +3344,9 @@ export function startScripts() {
     // Cache playmode reference so we can update the camera mask each frame
     // without a per-frame dynamic import (which is expensive).
     let _playmodeRef = null;
-    import('./engine.playmode.js').then(m => { _playmodeRef = m; });
+    import('./engine.playmode.js').then(m => { _playmodeRef = m; }).catch(e => {
+        console.error('[Zengine] Failed to load engine.playmode.js reference:', e);
+    });
 
     let _last = performance.now();
     _ticker = () => {
@@ -3334,11 +3392,35 @@ export function startScripts() {
         if (_physicsModule) {
             _physicsModule.stepPhysics(dt);
         } else {
-            import('./engine.physics.js').then(m => { _physicsModule = m; m.stepPhysics(dt); });
+            import('./engine.physics.js').then(m => { _physicsModule = m; m.stepPhysics(dt); }).catch(e => {
+                console.error('[Zengine] Failed to load engine.physics.js / step physics:', e);
+            });
         }
     };
     state.app.ticker.add(_ticker);
     _logConsole(`▶ Scripts: ${count} instance${count!==1?'s':''} running`, '#4ade80');
+  } catch (fatalErr) {
+    // ── Absolute last resort ─────────────────────────────────────────────
+    // startScripts() is called as `import(...).then(m => m.startScripts())`
+    // with NO .catch() in enterPlayMode() — if anything above throws
+    // synchronously and escapes uncaught, it becomes a bare, contextless
+    // "Unhandled promise rejection" with no script/object name, on EVERY
+    // Play press, for EVERY object — which matches "almost everything I do
+    // shows that error" far better than a single broken script would. This
+    // catch guarantees that can never happen again: whatever goes wrong here
+    // is now fully reported, with a stack trace, instead of vanishing into a
+    // bare message.
+    const banner = '═'.repeat(70);
+    console.error(
+        `\n${banner}\nZENGINE: startScripts() FAILED — Play Mode could not fully start\n${banner}\n` +
+        `Error: [${fatalErr?.name ?? 'Error'}] ${fatalErr?.message ?? fatalErr}\n` +
+        `Stack: ${fatalErr?.stack ?? '(no stack available)'}\n${banner}\n`
+    );
+    try {
+        _logConsole(`❌ FATAL: startScripts() failed — ${fatalErr?.message ?? fatalErr}`, '#f87171');
+        _logConsole(`   This is an engine-level failure, not a single broken script. See browser console for full stack.`, '#94a3b8');
+    } catch (_) { /* never let logging break error handling */ }
+  }
 }
 
 // ── Transition freeze flag ────────────────────────────────────
