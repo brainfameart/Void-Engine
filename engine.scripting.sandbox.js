@@ -332,6 +332,29 @@ function _buildSandbox(obj, instRef) {
             get isOnCeiling() { return !!obj._isOnCeiling; },
             /** True when this body is pressed against a wall this frame (Kinematic and Dynamic). */
             get isOnWall()    { return !!obj._isOnWall; },
+            /**
+             * True when this body is resting on a slope (angled floor) this frame.
+             * A slope is any surface whose normal is not perfectly vertical.
+             * Works for Kinematic and Dynamic bodies.
+             */
+            get isOnSlope()   { return !!obj._isOnSlope; },
+            /**
+             * The angle of the slope this body is standing on, in degrees (0 = flat, 45 = steep).
+             * Returns 0 when not on a slope. Works for Kinematic and Dynamic bodies.
+             */
+            get slopeAngle()  { return obj._slopeAngle ?? 0; },
+            /**
+             * Set the angle threshold (in degrees) that separates "ground" from "slope".
+             * Floor contacts whose tilt is ≤ this angle set isOnGround.
+             * Floor contacts whose tilt is  > this angle set isOnSlope.
+             * isOnGround and isOnSlope are always mutually exclusive.
+             *   physics.setGroundAngle(30)  → only near-flat surfaces count as ground
+             *   physics.setGroundAngle(60)  → even steep ramps count as ground
+             * Default: 45°.
+             */
+            setGroundAngle(degrees) { obj._groundAngleLimit = Math.max(0, Math.min(89, +degrees || 45)); },
+            /** The current ground-angle threshold in degrees. Default 45. */
+            get groundAngle() { return obj._groundAngleLimit ?? 45; },
             /** Lock this body completely — nothing can move it, including scripts. */
             setImmovable(val) {
                 obj.physicsImmovable = !!val;

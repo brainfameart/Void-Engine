@@ -40,17 +40,28 @@ export function _nextRepeatId() { return ++_repeatIdCounter; }
 export const _scriptFnCache = new Map();
 
 // ── AABB overlap helper (used by sandbox + runtime) ───────────
+// Returns the axis-aligned bounding box accounting for rotation (OBB → AABB projection).
 export function _getAABB(obj) {
-    const hw = (obj.spriteGraphic?.width  ?? obj._bounds?.width  ?? 100) / 2;
-    const hh = (obj.spriteGraphic?.height ?? obj._bounds?.height ?? 100) / 2;
+    const sg  = obj.spriteGraphic;
+    // Use Math.max(..., 2) so that newly-spawned objects whose textures haven't
+    // finished loading yet (width=0) still produce a non-zero AABB that raycasts
+    // and overlap checks can detect without a one-frame lag.
+    const hw  = Math.max((sg?.width  || obj._bounds?.width  || 100), 2) / 2;
+    const hh  = Math.max((sg?.height || obj._bounds?.height || 100), 2) / 2;
     const sx  = Math.abs(obj.scale?.x ?? 1);
     const sy  = Math.abs(obj.scale?.y ?? 1);
-    return {
-        left:   obj.x - hw * sx,
-        right:  obj.x + hw * sx,
-        top:    obj.y - hh * sy,
-        bottom: obj.y + hh * sy,
-    };
+    const w   = hw * sx;
+    const h   = hh * sy;
+    const rot = obj.rotation ?? 0;
+    if (rot === 0) {
+        return { left: obj.x - w, right: obj.x + w, top: obj.y - h, bottom: obj.y + h };
+    }
+    // OBB → AABB: project the four corners onto world axes
+    const cosA = Math.abs(Math.cos(rot));
+    const sinA = Math.abs(Math.sin(rot));
+    const extX = w * cosA + h * sinA;
+    const extY = w * sinA + h * cosA;
+    return { left: obj.x - extX, right: obj.x + extX, top: obj.y - extY, bottom: obj.y + extY };
 }
 
 export function _isOverlapping(objA, objB) {

@@ -5,7 +5,7 @@
                          exposes the full scripting API surface
    ============================================================ */
 
-import { _instances, _isOverlapping, _tagRegistry, _logConsole, _deliverMsg } from './engine.scripting.shared.js';
+import { _instances, _isOverlapping, _tagRegistry, _logConsole, _deliverMsg, _scheduleTimer } from './engine.scripting.shared.js';
 import { _deepCopyObjectProps } from './engine.scripting.sandbox.js';
 
 function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
@@ -60,6 +60,13 @@ function _makeDeferredProxy(spawnX = 0, spawnY = 0) {
         get state()         { return _realProxy ? _realProxy.state         : null; },
         get isDead()        { return _realProxy ? _realProxy.isDead        : false; },
         get isInvincible()  { return _realProxy ? _realProxy.isInvincible  : false; },
+        get isOnGround()    { return _realProxy ? _realProxy.isOnGround    : false; },
+        get isOnCeiling()   { return _realProxy ? _realProxy.isOnCeiling   : false; },
+        get isOnWall()      { return _realProxy ? _realProxy.isOnWall      : false; },
+        get isOnSlope()     { return _realProxy ? _realProxy.isOnSlope     : false; },
+        get slopeAngle()    { return _realProxy ? _realProxy.slopeAngle    : 0; },
+        get velX()          { return _realProxy ? _realProxy.velX          : 0; },
+        get velY()          { return _realProxy ? _realProxy.velY          : 0; },
         get opts()          { return _realProxy ? _realProxy.opts          : {}; },
         get text()          { return _realProxy ? _realProxy.text          : ''; },
         get width()         { return _realProxy ? _realProxy.width         : 1; },
@@ -393,6 +400,27 @@ function _makeProxy(f) {
 
         get physics() { const i = _inst(); return i ? i.api.physics : null; },
 
+        // ── Direct physics state ─────────────────────────────────────────────
+        // These read straight from the object so they work via find() / stored
+        // proxies even when the target object has NO script attached.
+        get isOnGround()  { return !!f._isOnGround; },
+        get isOnCeiling() { return !!f._isOnCeiling; },
+        get isOnWall()    { return !!f._isOnWall; },
+        get isOnSlope()   { return !!f._isOnSlope; },
+        get slopeAngle()  { return f._slopeAngle ?? 0; },
+        setGroundAngle(degrees) { f._groundAngleLimit = Math.max(0, Math.min(89, +degrees || 45)); },
+        get groundAngle() { return f._groundAngleLimit ?? 45; },
+        /** Actual velocity X in world units/sec (+right). Reads from physics body. */
+        get velX() {
+            if (f.physicsBody === 'kinematic') return  (f._kinematicActualVx ?? 0) / 100;
+            return  (f._physicsBody?.getLinearVelocity()?.x ?? 0) / 100;
+        },
+        /** Actual velocity Y in world units/sec (+up). Reads from physics body. */
+        get velY() {
+            if (f.physicsBody === 'kinematic') return -(f._kinematicActualVy ?? 0) / 100;
+            return -(f._physicsBody?.getLinearVelocity()?.y ?? 0) / 100;
+        },
+
         // ── Health ────────────────────────────────────────────────────────────
         get health()  { return f._health ?? 100; },
         set health(v) { f._health = Math.max(0, +v); },
@@ -549,7 +577,7 @@ function _makeProxy(f) {
         },
 
         // ── AI / Navigation ───────────────────────────────────────────────────
-        get isWalking() { return !!f._nav?.active; },
+        get isWalking()  { return !!f._nav?.active; },
         get isStuck()   { const i = _inst(); return i ? !!i._isStuck : false; },
 
         walkTo(x, y, opts)        { const i = _inst(); if (i) i.api.walkTo(x, y, opts ?? {}); },
@@ -586,8 +614,18 @@ function _makeProxy(f) {
         },
 
         // ── Draggable / Throwable ────────────────────────────────────────────
-        makeDraggable(opts) { const i = _inst(); if (i) i.api.makeDraggable(opts); },
-        makeThrowable(opts) { const i = _inst(); if (i) i.api.makeThrowable(opts); },
+        makeDraggable(opts) {
+            const i = _inst();
+            if (i) { i.api.makeDraggable(opts); return; }
+            // No script instance: register standalone drag so the global mousedown
+            // handler (runtime.js _md) can start the drag on hit-test.
+            f._standaloneDragSetup = { type: 'draggable', opts: opts ?? {} };
+        },
+        makeThrowable(opts) {
+            const i = _inst();
+            if (i) { i.api.makeThrowable(opts); return; }
+            f._standaloneDragSetup = { type: 'throwable', opts: opts ?? {} };
+        },
         throwObject(t, opts) { const i = _inst(); if (i) i.api.throwObject(t, opts); },
 
         // ── Distance ──────────────────────────────────────────────────────────
@@ -611,9 +649,26 @@ function _makeProxy(f) {
         },
 
         // ── Timers / tweens ───────────────────────────────────────────────────
-        wait(secs, fn)                    { const i = _inst(); if (i) i.api.wait(secs, fn); },
+        // wait/repeat fall back to the shared timer queue when there is no
+        // script instance on the target object — cross-script calls work correctly.
+        wait(secs, fn) {
+            const i = _inst();
+            if (i) { i.api.wait(secs, fn); return; }
+            _scheduleTimer(+secs, fn, 'proxy.wait', f.label);
+        },
+        repeat(interval, fn) {
+            const i = _inst();
+            if (i) return i.api.repeat(interval, fn);
+            let cancelled = false;
+            const tick = () => {
+                if (cancelled) return;
+                try { fn(); } catch(_) {}
+                _scheduleTimer(+interval, tick, 'proxy.repeat', f.label);
+            };
+            _scheduleTimer(+interval, tick, 'proxy.repeat', f.label);
+            return { cancel() { cancelled = true; } };
+        },
         tween(props, dur, easing, onDone) { const i = _inst(); if (i) return i.api.tween(props, dur, easing, onDone); },
-        repeat(interval, fn)              { const i = _inst(); return i ? i.api.repeat(interval, fn) : null; },
         hitFlash(color, dur)              { const i = _inst(); if (i) i.api.hitFlash?.(color, dur); },
         objectShake(amp, dur)             { const i = _inst(); if (i) i.api.objectShake?.(amp, dur); },
         destroyAfter(secs)                { const i = _inst(); if (i) i.api.destroyAfter(secs); else setTimeout(() => { f._markedForDestroy = true; }, +secs * 1000); },

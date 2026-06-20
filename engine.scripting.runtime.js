@@ -659,6 +659,31 @@ function isOnCeiling()              { return physics.isOnCeiling; }
 function isOnWall()                 { return physics.isOnWall; }
 
 /**
+ * Is this body standing on a slope (angled surface) this frame?
+ * Works for both Kinematic and Dynamic bodies.
+ * Use to apply slope friction or prevent sliding:
+ *   if (isOnSlope()) velocityX *= 0.92;
+ */
+function isOnSlope()                { return physics.isOnSlope; }
+
+/**
+ * Set the angle threshold (degrees) that splits "ground" from "slope".
+ * Surfaces ≤ this angle count as ground (isOnGround). Steeper surfaces count as slope.
+ * isOnGround and isOnSlope are always mutually exclusive.
+ * Default is 45. Useful to fine-tune what counts as walkable vs slideable terrain.
+ *   setGroundAngle(30)  → only near-flat floors count as ground
+ *   setGroundAngle(60)  → even steep ramps count as walkable ground
+ */
+function setGroundAngle(degrees)    { physics.setGroundAngle(degrees); }
+
+/**
+ * The angle in degrees of the slope this body is on (0 = flat, 45 = steep diagonal).
+ * Returns 0 when not on a slope.
+ *   if (getSlopeAngle() > 40) velocityX = 0;
+ */
+function getSlopeAngle()            { return physics.slopeAngle; }
+
+/**
  * Immediately stop all physics movement on this body.
  * Works for Dynamic and Kinematic bodies.
  */
@@ -2468,20 +2493,17 @@ function _applyDragThisFrame(dt) {
         draggedObj.y = -wy * 100;
 
     } else if (ptype === 'kinematic') {
-        // ── Kinematic: write velocity so the physics SAT sweep carries the object
-        // smoothly this frame instead of treating it as a raw teleport.
-        // Velocity is in px/sec (engine internal units).
-        const realDt = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
-        const prevX  = draggedObj._kinematicPrevX ?? draggedObj.x;
-        const prevY  = draggedObj._kinematicPrevY ?? draggedObj.y;
+        // ── Kinematic: write position directly.
+        // stepPhysics reads directDx = (obj.x - _kinematicPrevX) and sweeps it
+        // through SAT collision — so just writing x/y here is sufficient.
+        // Do NOT also write _kinematicVx/Vy; that would double-apply the delta
+        // (both directDx AND vx*dt would capture the same displacement → 2× movement).
         const desiredX =  wx * 100;
         const desiredY = -wy * 100;
-        // Express the desired displacement as a velocity for this frame
-        draggedObj._kinematicVx = (desiredX - prevX) / realDt;
-        draggedObj._kinematicVy = (desiredY - prevY) / realDt;
-        // Also write position directly so smooth lerp lag doesn't drift
         draggedObj.x = desiredX;
         draggedObj.y = desiredY;
+        draggedObj._kinematicVx = 0;
+        draggedObj._kinematicVy = 0;
 
     } else {
         // ── No physics body (none / static): direct position write.
@@ -2527,6 +2549,11 @@ export function _applyThrowVelocity(obj) {
             api._vel = api._vel ?? { x: 0, y: 0 };
             api._vel.x = vx;
             api._vel.y = vy;
+        } else {
+            // No script instance: store as a free-throw so stepPhysics applies it
+            // each frame, giving the kinematic body sustained post-throw movement.
+            obj._freeThrowVx = vx;
+            obj._freeThrowVy = vy;
         }
         // Also seed the kinematic slots for the very next frame (before update() runs)
         obj._kinematicVx =  vx * 100;
@@ -2939,15 +2966,64 @@ function _mm(e) {
 }
 function _md(e) {
     for (const i of _instances) i._handleMouseDown();
-    // Hit-test for makeDraggable — grab starts on mousedown, not on click
-    if (state.app?.view) {
-        const canvas = state.app.view;
-        const rect   = canvas.getBoundingClientRect();
-        const cx = e.clientX - rect.left;
-        const cy = e.clientY - rect.top;
-        for (const i of _instances) {
-            if (i._onDragMouseDown) i._handleDragMouseDown(cx, cy);
-        }
+    if (!state.app?.view) return;
+    const canvas = state.app.view;
+    const rect   = canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    // Hit-test for makeDraggable / makeThrowable (script-driven instances)
+    for (const i of _instances) {
+        if (i._onDragMouseDown) i._handleDragMouseDown(cx, cy);
+    }
+    // Standalone draggable — objects with _standaloneDragSetup but no script instance
+    _checkStandaloneDrag(cx, cy);
+}
+
+// Activate standalone drag for objects registered via proxy.makeDraggable/makeThrowable.
+function _checkStandaloneDrag(cx, cy) {
+    if (_activeDragObj || !state.gameObjects) return;
+    const sc = state.sceneContainer;
+    if (!sc) return;
+    for (const obj of state.gameObjects) {
+        if (!obj._standaloneDragSetup || !obj.visible) continue;
+        // World-space AABB hit test using canvas coords
+        try {
+            const b    = obj.getBounds();
+            const rect = state.app?.view?.getBoundingClientRect?.() ?? { left:0, top:0 };
+            const bx = b.x - rect.left, by = b.y - rect.top;
+            if (cx < bx || cx > bx + b.width || cy < by || cy > by + b.height) continue;
+        } catch(_) { continue; }
+        const setup = obj._standaloneDragSetup;
+        const opts  = setup.opts ?? {};
+        const isThrow = setup.type === 'throwable';
+        const scaleMul = opts.scale ?? 1.08;
+        if (!obj._standaloneSavedScale) obj._standaloneSavedScale = { x: obj.scale?.x ?? 1, y: obj.scale?.y ?? 1 };
+        if (obj.scale) { obj.scale.x = obj._standaloneSavedScale.x * scaleMul; obj.scale.y = obj._standaloneSavedScale.y * scaleMul; }
+        _throwVelX = _throwVelY = 0;
+        _throwPrevX = obj.x / 100;
+        _throwPrevY = -obj.y / 100;
+        _activeDragObj = obj;
+        _activeDragOpts = {
+            smooth:           opts.smooth  ?? (isThrow ? 0 : 16),
+            clampToGameBounds:opts.clamp   ?? false,
+            throw:            isThrow,
+            speed:            opts.speed   ?? 1,
+            maxSpeed:         opts.maxSpeed ?? null,
+            _throwAlpha:      0.2,
+            onDragFrame:      opts.onDrag  ?? null,
+            onDrop: () => {
+                if (obj.scale && obj._standaloneSavedScale) {
+                    obj.scale.x = obj._standaloneSavedScale.x;
+                    obj.scale.y = obj._standaloneSavedScale.y;
+                }
+                if (isThrow) {
+                    try { _applyThrowVelocity(obj); } catch(_) {}
+                    if (opts.onThrow) try { opts.onThrow(_throwVelX, _throwVelY); } catch(_) {}
+                }
+                if (opts.onDrop) try { opts.onDrop(obj.x/100, -obj.y/100); } catch(_) {}
+            },
+        };
+        break;
     }
 }
 function _mu(e) {
@@ -2982,6 +3058,7 @@ function _td(e) {
         for (const i of _instances) {
             if (i._onDragMouseDown) i._handleDragMouseDown(cx, cy);
         }
+        _checkStandaloneDrag(cx, cy);
     }
     // Fire onTouchStart handlers
     for (const inst of _instances) {

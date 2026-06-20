@@ -527,18 +527,24 @@ function _getKinematicShape(obj) {
         const capR = Math.min(capW, capH) / 2;
         const cx   = obj.x + (g.ox || 0) * sx;
         const cy   = obj.y + (g.oy || 0) * sy;
-        const N    = 8; // verts per hemisphere
-        const verts = [];
+        const N    = 8;
+        const localVerts = [];
         if (capW >= capH) {
             const len = capW / 2 - capR;
-            for (let i = 0; i <= N; i++) { const a = Math.PI/2 + (i/N)*Math.PI; verts.push({ x: cx - len + Math.cos(a)*capR, y: cy + Math.sin(a)*capR }); }
-            for (let i = 0; i <= N; i++) { const a = -Math.PI/2 + (i/N)*Math.PI; verts.push({ x: cx + len + Math.cos(a)*capR, y: cy + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = Math.PI/2 + (i/N)*Math.PI; localVerts.push({ x: -len + Math.cos(a)*capR, y: Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = -Math.PI/2 + (i/N)*Math.PI; localVerts.push({ x:  len + Math.cos(a)*capR, y: Math.sin(a)*capR }); }
         } else {
             const len = capH / 2 - capR;
-            for (let i = 0; i <= N; i++) { const a = Math.PI + (i/N)*Math.PI; verts.push({ x: cx + Math.cos(a)*capR, y: cy - len + Math.sin(a)*capR }); }
-            for (let i = 0; i <= N; i++) { const a = (i/N)*Math.PI; verts.push({ x: cx + Math.cos(a)*capR, y: cy + len + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = Math.PI + (i/N)*Math.PI; localVerts.push({ x: Math.cos(a)*capR, y: -len + Math.sin(a)*capR }); }
+            for (let i = 0; i <= N; i++) { const a = (i/N)*Math.PI;           localVerts.push({ x: Math.cos(a)*capR, y:  len + Math.sin(a)*capR }); }
         }
-        // Capsule hull is convex — one part
+        // Apply object rotation, then translate to world centre
+        const rot  = obj.rotation || 0;
+        const cosR = Math.cos(rot), sinR = Math.sin(rot);
+        const verts = localVerts.map(v => ({
+            x: cx + v.x * cosR - v.y * sinR,
+            y: cy + v.x * sinR + v.y * cosR,
+        }));
         return { parts: [verts], allVerts: verts };
     }
 
@@ -546,23 +552,38 @@ function _getKinematicShape(obj) {
     const poly = _getActivePolygon(obj);
     if (Array.isArray(poly) && poly.length >= 3 &&
         (shape === 'polygon' || shape === 'shared')) {
-        const worldVerts = poly.map(p => ({ x: obj.x + p.x * sx, y: obj.y + p.y * sy }));
-        // Decompose into convex triangles (handles concave shapes transparently)
+        // Rotate each local vertex by object rotation, then translate to world
+        const rot  = obj.rotation || 0;
+        const cosR = Math.cos(rot), sinR = Math.sin(rot);
+        const worldVerts = poly.map(p => {
+            const lx = p.x * sx, ly = p.y * sy;
+            return {
+                x: obj.x + lx * cosR - ly * sinR,
+                y: obj.y + lx * sinR + ly * cosR,
+            };
+        });
         const tris = _triangulate(worldVerts);
         const parts = tris.length > 0 ? tris : [worldVerts];
         return { parts, allVerts: worldVerts };
     }
 
     // ── Box fallback ─────────────────────────────────────────
-    const g  = collisionGeom(obj);
-    const w  = (g.w || 32) * sx;
-    const h  = (g.h || 32) * sy;
-    const cx = obj.x + (g.ox || 0) * sx;
-    const cy = obj.y + (g.oy || 0) * sy;
-    const verts = [
-        { x: cx - w/2, y: cy - h/2 }, { x: cx + w/2, y: cy - h/2 },
-        { x: cx + w/2, y: cy + h/2 }, { x: cx - w/2, y: cy + h/2 },
+    const g   = collisionGeom(obj);
+    const w   = (g.w || 32) * sx;
+    const h   = (g.h || 32) * sy;
+    const cx  = obj.x + (g.ox || 0) * sx;
+    const cy  = obj.y + (g.oy || 0) * sy;
+    const rot = obj.rotation || 0;
+    const cosR = Math.cos(rot), sinR = Math.sin(rot);
+    const hw = w / 2, hh = h / 2;
+    const corners = [
+        { x: -hw, y: -hh }, { x: hw, y: -hh },
+        { x:  hw, y:  hh }, { x:-hw, y:  hh },
     ];
+    const verts = corners.map(v => ({
+        x: cx + v.x * cosR - v.y * sinR,
+        y: cy + v.x * sinR + v.y * cosR,
+    }));
     return { parts: [verts], allVerts: verts };
 }
 
@@ -883,6 +904,21 @@ export function stepPhysics(dt) {
         }
 
         // 1. Consume desired velocity / pending delta from scripts
+        // Free-throw: kinematic bodies thrown via proxy but without a script instance
+        // maintain velocity via _freeThrowVx/Vy (world units/sec → px/sec *100).
+        if (obj._freeThrowVx !== undefined || obj._freeThrowVy !== undefined) {
+            obj._kinematicVx  =  (obj._freeThrowVx ?? 0) * 100;
+            obj._kinematicVy  = -(obj._freeThrowVy ?? 0) * 100;
+            // Dampen by 15% per second so the object eventually comes to rest.
+            const damp = Math.pow(0.85, dt);
+            obj._freeThrowVx = (obj._freeThrowVx ?? 0) * damp;
+            obj._freeThrowVy = (obj._freeThrowVy ?? 0) * damp;
+            // Clear once negligible.
+            if (Math.abs(obj._freeThrowVx) < 0.01 && Math.abs(obj._freeThrowVy) < 0.01) {
+                delete obj._freeThrowVx;
+                delete obj._freeThrowVy;
+            }
+        }
         const vx = obj._kinematicVx ?? 0;
         const vy = obj._kinematicVy ?? 0;
         obj._kinematicVx = 0;
@@ -1016,26 +1052,44 @@ export function stepPhysics(dt) {
         obj._kinematicPrevX = obj.x;
         obj._kinematicPrevY = obj.y;
 
-        // 6. Ground / wall / ceiling flags — angle-based (Godot / Unity / Unreal style)
+        // 6. Ground / wall / ceiling / slope flags — angle-based with user-settable cutoff
         // ─────────────────────────────────────────────────────────────────────────────
-        // Classify each contact normal collected during the sweep substeps:
-        //   • Normal pushes player UP   (ny < -FLOOR_DOT) → floor  → isOnGround
-        //   • Normal pushes player DOWN (ny >  FLOOR_DOT) → ceiling → isOnCeiling
-        //   • Otherwise                                   → wall   → isOnWall
-        // This means a steep wall or angled surface will NEVER set isOnGround just
-        // because the player touched it — only surfaces within 45° of horizontal do.
-        // The idle ground-probe runs after (angle-aware too) so standing still on a
-        // slope still registers correctly.
-        let sweepOnGround = false, sweepOnCeiling = false, sweepOnWall = false;
+        // obj._groundAngleLimit (degrees, default 45) is set by setGroundAngle(deg).
+        // Floor contacts ≤ that angle   → isOnGround (never isOnSlope at the same time)
+        // Floor contacts >  that angle  → isOnSlope  (never isOnGround at the same time)
+        const _groundLimitDeg = obj._groundAngleLimit ?? 45;
+        let sweepOnCeiling = false, sweepOnWall = false;
+        let hasFlatGround = false, hasSlopeGround = false, maxSlopeAngle = 0;
         for (const n of allHitNormals) {
-            if      (n.ny < -FLOOR_DOT)              sweepOnGround  = true;
-            else if (n.ny >  FLOOR_DOT)              sweepOnCeiling = true;
-            else if (Math.abs(n.nx) >= FLOOR_DOT)    sweepOnWall    = true;
+            if (n.ny < -FLOOR_DOT) {
+                const ang = Math.abs(Math.asin(Math.min(1, Math.abs(n.nx))) * 180 / Math.PI);
+                if (ang <= _groundLimitDeg) {
+                    hasFlatGround  = true;
+                } else {
+                    hasSlopeGround = true;
+                    if (ang > maxSlopeAngle) maxSlopeAngle = ang;
+                }
+            } else if (n.ny > FLOOR_DOT) {
+                sweepOnCeiling = true;
+            } else if (Math.abs(n.nx) >= FLOOR_DOT) {
+                sweepOnWall = true;
+            }
         }
+        // When standing still (no sweep floor hit), probe downward — that always counts
+        // as flat ground (the probe is nearly vertical by construction).
         const finalShape = _getKinematicShape(obj);
-        obj._isOnGround  = sweepOnGround  || _probeGround(finalShape, subStatics);
+        if (!allHitNormals.some(n => n.ny < -FLOOR_DOT) && _probeGround(finalShape, subStatics)) {
+            hasFlatGround = true;
+        }
+        // isOnGround and isOnSlope are mutually exclusive:
+        //   flat floor (≤ groundAngle from horizontal) → isOnGround only
+        //   steep floor (> groundAngle from horizontal) → isOnSlope only
+        // If BOTH flat and slope contacts exist, isOnGround wins (you have solid footing).
+        obj._isOnGround  = hasFlatGround;
+        obj._isOnSlope   = hasSlopeGround && !hasFlatGround;
+        obj._slopeAngle  = hasSlopeGround ? maxSlopeAngle : 0;
         obj._isOnCeiling = sweepOnCeiling;
-        obj._isOnWall    = sweepOnWall    || (!sweepOnGround && !sweepOnCeiling && (hitLeft || hitRight));
+        obj._isOnWall    = sweepOnWall || (!hasFlatGround && !hasSlopeGround && !sweepOnCeiling && (hitLeft || hitRight));
 
         // Track actual velocity (px/s) so physics.velX/velY work for kinematic too
         obj._kinematicActualVx =  (obj.x - prevX) / Math.max(dt, 0.001);
@@ -1155,25 +1209,38 @@ export function stepPhysics(dt) {
         // |push.x| dominates (wall-like angle)               → wall   → isOnWall
         // Only surfaces within 45° of horizontal register as floor or ceiling;
         // steep walls and angled surfaces at >45° from horizontal are walls.
-        let onGround = false, onCeiling = false, onWall = false;
+        // obj._groundAngleLimit (set by setGroundAngle) splits floor contacts into
+        // isOnGround (≤ limit) vs isOnSlope (> limit) — they are mutually exclusive.
+        const _dynGroundLimit = obj._groundAngleLimit ?? 45;
+        let dynFlatGround = false, dynSlope = false, dynSlopeDeg = 0;
+        let onCeiling = false, onWall = false;
         for (let ce = body.getContactList(); ce; ce = ce.next) {
             const contact = ce.contact;
             if (!contact || !contact.isTouching()) continue;
             const manifold = contact.getWorldManifold();
             if (!manifold || !manifold.normal) continue;
-            // Planck v1 normal points FROM bodyA OUTWARD (away from A, toward B).
-            // Flip so push vector always points FROM the surface TOWARD us.
-            // Planck uses +Y = up (math convention), so py > 0 = push upward = floor.
             const isBodyA = contact.getFixtureA().getBody() === body;
             const px = isBodyA ? -manifold.normal.x : manifold.normal.x;
             const py = isBodyA ? -manifold.normal.y : manifold.normal.y;
-            if      (py >=  FLOOR_DOT)           onGround  = true;
-            else if (py <= -FLOOR_DOT)           onCeiling = true;
-            else if (Math.abs(px) >= FLOOR_DOT)  onWall    = true;
+            if (py >= FLOOR_DOT) {
+                const ang = Math.abs(Math.asin(Math.min(1, Math.abs(px))) * 180 / Math.PI);
+                if (ang <= _dynGroundLimit) {
+                    dynFlatGround = true;
+                } else {
+                    dynSlope = true;
+                    if (ang > dynSlopeDeg) dynSlopeDeg = ang;
+                }
+            } else if (py <= -FLOOR_DOT) {
+                onCeiling = true;
+            } else if (Math.abs(px) >= FLOOR_DOT) {
+                onWall = true;
+            }
         }
-        obj._isOnGround  = onGround;
+        obj._isOnGround  = dynFlatGround;
         obj._isOnCeiling = onCeiling;
         obj._isOnWall    = onWall;
+        obj._isOnSlope   = dynSlope && !dynFlatGround;
+        obj._slopeAngle  = dynSlope ? dynSlopeDeg : 0;
 
         // ── Full sleep ───────────────────────────────────────────
         if (speed < SLEEP_SPEED && Math.abs(omega) < SLEEP_OMEGA) {
@@ -1239,6 +1306,10 @@ export function stopPhysics() {
             delete obj._isOnGround;
             delete obj._isOnCeiling;
             delete obj._isOnWall;
+            delete obj._isOnSlope;
+            delete obj._slopeAngle;
+            delete obj._freeThrowVx;
+            delete obj._freeThrowVy;
         }
     }
     _world  = null;
@@ -1284,6 +1355,10 @@ export function removePhysicsBody(obj) {
     delete obj._isOnGround;
     delete obj._isOnCeiling;
     delete obj._isOnWall;
+    delete obj._isOnSlope;
+    delete obj._slopeAngle;
+    delete obj._freeThrowVx;
+    delete obj._freeThrowVy;
     _bodies.splice(idx, 1);
     _kinematicContacts.delete(obj);
 }
