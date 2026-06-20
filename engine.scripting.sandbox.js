@@ -1306,6 +1306,7 @@ function _buildSandbox(obj, instRef) {
                 // Scene restarted/switched/stopped while this import was in flight — bail.
                 if (_currentPlayGeneration() !== genAtCallTime1) return;
                 const newObj = createImageObject(asset, wx * 100, -wy * 100, { silent: true });
+                if (templateObj) {
                     _deepCopyObjectProps(templateObj, newObj);
                 } else if (prefabTemplate) {
                     // Apply prefab data: script, tag, physics settings, etc.
