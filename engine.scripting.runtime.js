@@ -23,6 +23,7 @@ import {
     _camera, _updateCamera,
     clearSceneVars, clearGlobalVars,
     _registerScriptInstanceClass,
+    _bumpPlayGeneration,
     getScript,
 } from './engine.scripting.shared.js';
 import { _buildSandbox, _deepCopyObjectProps } from './engine.scripting.sandbox.js';
@@ -86,6 +87,7 @@ class ScriptInstance {
     constructor(obj, name, code) {
         this.obj              = obj;
         this.name             = name;
+        this._stopped         = false;  // set true by stop() — prevents any further callbacks
         // All registered callbacks
         this._onStart         = null;
         this._onUpdate        = null;
@@ -657,6 +659,14 @@ function isOnCeiling()              { return physics.isOnCeiling; }
  * Use to cancel horizontal velocity:  if (isOnWall()) { velocityX = 0; }
  */
 function isOnWall()                 { return physics.isOnWall; }
+
+/**
+ * Is this body on a slope (diagonal surface — not flat enough for ground, not steep enough for wall)?
+ * Use to play a slide animation or apply slope friction.
+ * Kinematic bodies only.
+ *   if (isOnSlope()) { velocityX *= 0.95; }
+ */
+function isOnSlope()                { return physics.isOnSlope; }
 
 /**
  * Immediately stop all physics movement on this body.
@@ -2106,9 +2116,23 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             // stepPhysics runs after all scripts this frame, sweeps the sprite AABB
             // against tile/static AABBs, resolves collisions, and writes the
             // corrected position to obj.x/y. No Matter body involved.
-            if (!obj.physicsImmovable) {
+            //
+            // Skip this write if the object is the one currently being dragged —
+            // _applyDragThisFrame() already set _kinematicVx/Vy for this frame
+            // earlier (drag runs before scripts). Without this guard, an object
+            // that is both draggable AND has its own onUpdate velocity logic
+            // (e.g. a player character you can also pick up) would have the drag
+            // silently overridden the instant its own script ran, making drag
+            // feel broken/unresponsive on that object.
+            if (!obj.physicsImmovable && _activeDragObj !== obj) {
                 obj._kinematicVx =  vel.x * 100;
                 obj._kinematicVy = -vel.y * 100;
+                // A script driving velocityX/Y every frame has taken over control —
+                // clear any leftover sustained throw velocity so the two don't add
+                // together (which would double the speed for one frame, then leave
+                // a phantom drift once the script sets velocity back to 0).
+                obj._kinematicSustainedVx = 0;
+                obj._kinematicSustainedVy = 0;
             }
         } else if (hasDynamicBody) {
             // ── Dynamic: apply script velocity to physics body.
@@ -2117,7 +2141,12 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             // `velocityY = 0` actually stops the body — without the dirty flag, the
             // `vel.y === 0` case would be silently skipped and the body would keep
             // its momentum from gravity/previous frames.
-            if (obj._velDirty) {
+            //
+            // Skip while this object is the active drag target — _applyDragThisFrame()
+            // already drove the body's velocity toward the cursor this frame (drag runs
+            // before scripts). Without this guard, a draggable object that also has its
+            // own onUpdate velocity logic would have the drag overridden every frame.
+            if (obj._velDirty && _activeDragObj !== obj) {
                 obj._velDirty = false;
                 // Only override components the script explicitly touched, blending
                 // with the current physics velocity for components left untouched.
@@ -2128,11 +2157,19 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
                 obj._physicsBody.setAwake(true);
                 obj._velSetX = false;
                 obj._velSetY = false;
+            } else if (_activeDragObj === obj) {
+                // Drop the dirty flag without applying — the drag's velocity write wins.
+                obj._velDirty = false;
+                obj._velSetX  = false;
+                obj._velSetY  = false;
             }
         } else {
             // ── No physics body — pure scripting movement ──────────────
-            if (vel.x !== 0) obj.x +=  vel.x * dt * 100;
-            if (vel.y !== 0) obj.y -= vel.y * dt * 100;
+            // Skip while this object is being dragged so the drag stays in control.
+            if (_activeDragObj !== obj) {
+                if (vel.x !== 0) obj.x +=  vel.x * dt * 100;
+                if (vel.y !== 0) obj.y -= vel.y * dt * 100;
+            }
         }
 
         // ── 5. onLand detection (kinematic and dynamic) ────────────
@@ -2174,6 +2211,12 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
     }
 
     stop() {
+        // Mark stopped FIRST — any pending wait()/repeat()/promise callbacks
+        // that fire after this point will see _stopped=true and no-op,
+        // instead of mutating an object that belongs to the next scene.
+        // (Mirrors Unity's "destroyed MonoBehaviour" guard and Godot's
+        // is_inside_tree() check — prevents rapid scene-restart glitches.)
+        this._stopped = true;
         // Release the sandbox iframe back to the pool for reuse
         if (this._sandboxIframe) {
             releaseSandboxIframe(this._sandboxIframe);
@@ -2402,14 +2445,27 @@ let _throwVelY   = 0;   // current throw velocity Y (world units/sec)
 let _throwPrevX  = 0;   // previous frame world X
 let _throwPrevY  = 0;   // previous frame world Y
 
+// ── Global canvas-relative mouse position ────────────────────
+// Updated by _mm regardless of which instance is active, so
+// drag works correctly even on objects without a script attached
+// (avoids "no instance → fall back to _instances[0]" lag bug).
+let _globalCanvasMX = 0;
+let _globalCanvasMY = 0;
+
 function _applyDragThisFrame(dt) {
     if (!_activeDragObj) return;
     const sc = state.sceneContainer;
     if (!sc) return;
-    const inst = _instances.find(i => i.obj === _activeDragObj) ?? _instances[0];
-    if (!inst) return;
-    const cx = inst._mouse.x;
-    const cy = inst._mouse.y;
+    // Use the global mouse position — works even if the dragged object has no script instance.
+    // Falls back to any live instance's mouse only as a last resort.
+    let cx = _globalCanvasMX;
+    let cy = _globalCanvasMY;
+    if (cx === 0 && cy === 0) {
+        const inst = _instances.find(i => i.obj === _activeDragObj) ?? _instances[0];
+        if (!inst) return;
+        cx = inst._mouse.x;
+        cy = inst._mouse.y;
+    }
     const targetX =  (cx - sc.x) / (sc.scale.x * 100) + (_activeDragOpts.offsetX ?? 0);
     const targetY = -(cy - sc.y) / (sc.scale.y * 100) + (_activeDragOpts.offsetY ?? 0);
     const smooth = _activeDragOpts.smooth ?? 0;
@@ -2445,43 +2501,55 @@ function _applyDragThisFrame(dt) {
     const ptype      = draggedObj.physicsBody;
 
     if (ptype === 'dynamic' && draggedObj._physicsBody && window.planck) {
-        // ── Dynamic: move the Planck body directly each frame.
-        // Zero ALL velocity (linear + angular + gravity contribution) so the body
-        // stays exactly under the finger instead of sinking or jittering.
-        const body = draggedObj._physicsBody;
-        const off  = body._zenOffset || { x: 0, y: 0 };
-        const ang  = body.getAngle();
-        const cosR = Math.cos(ang);
-        const sinR = Math.sin(ang);
-        body.setTransform(
-            window.planck.Vec2(
-                wx * 100 + off.x * cosR - off.y * sinR,
-                -wy * 100 + off.x * sinR + off.y * cosR
-            ),
-            ang
-        );
-        body.setLinearVelocity(window.planck.Vec2(0, 0));
+        // ── Dynamic: drive the body with VELOCITY toward the mouse, the same
+        // way Box2D's MouseJoint works (and what Unity/Godot physics drag is
+        // built on under the hood). Using body.setTransform() to teleport the
+        // body every frame bypasses Planck's collision solver entirely, so a
+        // dragged object would tunnel straight through walls and other bodies
+        // — that was the "drag doesn't work as expected" bug for dynamic
+        // objects. Velocity-based dragging lets normal collision response
+        // (the body slows/stops against obstacles) keep working while held.
+        const body    = draggedObj._physicsBody;
+        const realDt  = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
+        const pos     = body.getPosition();
+        const targetX = wx * 100;
+        const targetY = -wy * 100;
+        // Critically-damped spring toward the target — strong enough to track
+        // the mouse closely, soft enough that colliding with a wall actually
+        // stops it instead of overpowering the solver.
+        const stiffness = _activeDragOpts.stiffness ?? 18; // higher = snappier follow
+        const dvx = (targetX - pos.x) * stiffness;
+        const dvy = (targetY - pos.y) * stiffness;
+        body.setLinearVelocity(window.planck.Vec2(dvx, dvy));
         body.setAngularVelocity(0);
         body.setAwake(true);
-        // Sync PIXI position from Planck so they stay in agreement
-        draggedObj.x =  wx * 100;
-        draggedObj.y = -wy * 100;
+        // obj.x/y are kept in sync by the existing dynamic→sprite sync step
+        // that already runs every frame for all dynamic bodies — no need to
+        // write draggedObj.x/y here, and doing so would fight the physics sim.
 
     } else if (ptype === 'kinematic') {
-        // ── Kinematic: write velocity so the physics SAT sweep carries the object
-        // smoothly this frame instead of treating it as a raw teleport.
-        // Velocity is in px/sec (engine internal units).
+        // ── Kinematic: drive the SAT sweep via velocity — do NOT also write
+        // position directly. Writing position after setting velocity discarded
+        // whatever collision correction the sweep applied (the object would
+        // snap straight back to the mouse position even after hitting a wall),
+        // which is the "drag doesn't work as expected — tunnels through walls"
+        // bug. The sweep in stepPhysics is the single source of truth for the
+        // resulting obj.x/y, same as Unity's Rigidbody.MovePosition or Godot's
+        // move_and_collide — both let the physics step resolve the move rather
+        // than teleporting the transform afterward.
         const realDt = (typeof dt === 'number' && dt > 0) ? dt : (1 / 60);
         const prevX  = draggedObj._kinematicPrevX ?? draggedObj.x;
         const prevY  = draggedObj._kinematicPrevY ?? draggedObj.y;
         const desiredX =  wx * 100;
         const desiredY = -wy * 100;
-        // Express the desired displacement as a velocity for this frame
+        // Express the desired displacement as a velocity for this frame —
+        // stepPhysics sweeps from the current position toward this velocity
+        // and stops the object early if it hits a wall/floor.
         draggedObj._kinematicVx = (desiredX - prevX) / realDt;
         draggedObj._kinematicVy = (desiredY - prevY) / realDt;
-        // Also write position directly so smooth lerp lag doesn't drift
-        draggedObj.x = desiredX;
-        draggedObj.y = desiredY;
+        // Any sustained throw velocity is cancelled the moment you grab the object.
+        draggedObj._kinematicSustainedVx = 0;
+        draggedObj._kinematicSustainedVy = 0;
 
     } else {
         // ── No physics body (none / static): direct position write.
@@ -2517,20 +2585,28 @@ export function _applyThrowVelocity(obj) {
         obj._physicsBody.setAwake(true);
 
     } else if (ptype === 'kinematic') {
-        // Kinematic: write into the scripting velocity (_vel) so the value persists
-        // across frames. The update loop converts _vel → _kinematicVx/_kinematicVy
-        // each frame, which is what the SAT sweep reads.
-        // Writing _kinematicVx directly is NOT sufficient — it gets cleared after
-        // each physics step, causing a one-frame-only movement.
+        // Kinematic: write into BOTH the scripting velocity (_vel) AND the
+        // sustained velocity slot.
+        //   - api._vel: if this object has a script, its update() loop reads
+        //     this every frame and re-feeds _kinematicVx/Vy — this is what
+        //     lets onUpdate code like `if (isOnGround()) velocityY = 0` take
+        //     over control of a thrown object immediately.
+        //   - _kinematicSustainedVx/Vy: read directly by stepPhysics every
+        //     frame regardless of whether a script exists. This is what makes
+        //     throwObject()/makeThrowable() work on objects with NO script —
+        //     without it the object would move for exactly one physics tick
+        //     (the velocity is normally a one-shot per-frame input) and then
+        //     stop, which is the "throw doesn't work as expected" bug.
         const api = _instances.find(i => i.obj === obj)?.api;
         if (api) {
             api._vel = api._vel ?? { x: 0, y: 0 };
             api._vel.x = vx;
             api._vel.y = vy;
         }
-        // Also seed the kinematic slots for the very next frame (before update() runs)
-        obj._kinematicVx =  vx * 100;
-        obj._kinematicVy = -vy * 100;
+        obj._kinematicVx          =  vx * 100; // seed this frame immediately
+        obj._kinematicVy          = -vy * 100;
+        obj._kinematicSustainedVx =  vx * 100; // persists frame-to-frame
+        obj._kinematicSustainedVy = -vy * 100;
 
     } else {
         // No physics body: write into _vel for sustained movement
@@ -2935,6 +3011,9 @@ function _mm(e) {
     const r = c.getBoundingClientRect();
     const cx = e.clientX - r.left;
     const cy = e.clientY - r.top;
+    // Always update global position first — used by drag for objects without a script
+    _globalCanvasMX = cx;
+    _globalCanvasMY = cy;
     for (const i of _instances) i._handleMouseMove(cx, cy);
 }
 function _md(e) {
@@ -3014,6 +3093,8 @@ function _tm(e) {
     const r = state.app.view.getBoundingClientRect();
     const cx = t.clientX - r.left;
     const cy = t.clientY - r.top;
+    _globalCanvasMX = cx;
+    _globalCanvasMY = cy;
     for (const i of _instances) i._handleMouseMove(cx, cy);
 }
 let _muTouchPos = null;
@@ -3159,6 +3240,7 @@ export function unfreezeScripts()      { _scriptsFrozenDuringTransition = false;
 
 // ── Stop scripts (stopPlayMode) ───────────────────────────────
 export function stopScripts() {
+    _bumpPlayGeneration(); // invalidate any in-flight cloneSelf/wait/import().then() callbacks
     _scriptsFrozenDuringTransition = false; // always unfreeze on stop
     for (const i of _instances) i.stop();
     _instances.length = 0;
@@ -3174,6 +3256,7 @@ export function stopScripts() {
     _activeDragObj  = null;
     _activeDragOpts = {};
     _throwVelX = _throwVelY = _throwPrevX = _throwPrevY = 0;
+    _globalCanvasMX = 0; _globalCanvasMY = 0;
     _activeTouches  = [];
     if (_ticker && state.app) { state.app.ticker.remove(_ticker); _ticker = null; }
     window.removeEventListener('keydown',   _kd);

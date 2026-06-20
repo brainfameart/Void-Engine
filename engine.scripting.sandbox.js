@@ -14,7 +14,7 @@ import {
     _logConsole, _instances,
     _sceneVars, _globalVars,
     _tagRegistry, _groupRegistry,
-    _debugLines, _isOverlapping, _getAABB,
+    _debugLines, _isOverlapping, _getAABB, _raycastOBB, _getOBBParams,
     _nextRepeatId, _scriptFnCache,
     _friendlyScriptError,
     _newScriptInstance,
@@ -23,6 +23,7 @@ import {
     _scheduleTimer,
     _sendMessageToTag, _broadcastToTag, _broadcastToGroup, _broadcastGlobal,
     _camera,
+    _currentPlayGeneration,
 } from './engine.scripting.shared.js';
 import { _makeDeferredProxy, _makeProxy } from './engine.scripting.proxy.js';
 import {
@@ -332,6 +333,13 @@ function _buildSandbox(obj, instRef) {
             get isOnCeiling() { return !!obj._isOnCeiling; },
             /** True when this body is pressed against a wall this frame (Kinematic and Dynamic). */
             get isOnWall()    { return !!obj._isOnWall; },
+            /**
+             * True when this body is touching a diagonal slope surface — not flat enough
+             * to count as ground, not steep enough to count as a wall.
+             * Use to play a slide animation or apply friction on slopes.
+             * Kinematic only.
+             */
+            get isOnSlope()   { return !!obj._isOnSlope; },
             /** Lock this body completely — nothing can move it, including scripts. */
             setImmovable(val) {
                 obj.physicsImmovable = !!val;
@@ -985,7 +993,14 @@ function _buildSandbox(obj, instRef) {
          * Example:  wait(2, () => { log("2 seconds passed!"); });
          */
         wait(seconds, fn) {
-            _scheduleTimer(seconds, fn, this.name ?? 'wait()', obj?.label ?? '?');
+            const inst = instRef[0];
+            _scheduleTimer(seconds, () => {
+                // If this instance was stopped (scene restarted/switched, or this
+                // object destroyed) before the timer fired, skip the callback —
+                // prevents a late wait() from mutating an object in the next scene.
+                if (inst && inst._stopped) return;
+                fn();
+            }, this.name ?? 'wait()', obj?.label ?? '?');
         },
 
         // ── PHYSICS CONTROL FROM SCRIPT ───────────────────────
@@ -1286,13 +1301,11 @@ function _buildSandbox(obj, instRef) {
             }
 
             const dp = _makeDeferredProxy(wx, wy);
+            const genAtCallTime1 = _currentPlayGeneration();
             import('./engine.objects.js').then(({ createImageObject }) => {
+                // Scene restarted/switched/stopped while this import was in flight — bail.
+                if (_currentPlayGeneration() !== genAtCallTime1) return;
                 const newObj = createImageObject(asset, wx * 100, -wy * 100, { silent: true });
-                if (!newObj) return;
-                if (newObj._gizmoContainer) newObj._gizmoContainer.visible = false;
-
-                // Deep-copy all properties from template or prefab if found
-                if (templateObj) {
                     _deepCopyObjectProps(templateObj, newObj);
                 } else if (prefabTemplate) {
                     // Apply prefab data: script, tag, physics settings, etc.
@@ -1382,7 +1395,9 @@ function _buildSandbox(obj, instRef) {
                 return null;
             }
             const dp = _makeDeferredProxy(wx, wy);
+            const genAtCallTime2 = _currentPlayGeneration();
             import('./engine.objects.js').then(({ createImageObject }) => {
+                if (_currentPlayGeneration() !== genAtCallTime2) return;
                 const newObj = createImageObject(asset, wx * 100, -wy * 100, { silent: true });
                 if (!newObj) return;
                 if (newObj._gizmoContainer) newObj._gizmoContainer.visible = false;
@@ -1461,7 +1476,9 @@ function _buildSandbox(obj, instRef) {
             if (!asset) { _logConsole(`cloneObject: template has no asset`, '#facc15'); return null; }
 
             const dp = _makeDeferredProxy(wx, wy);
+            const genAtCallTime3 = _currentPlayGeneration();
             import('./engine.objects.js').then(({ createImageObject }) => {
+                if (_currentPlayGeneration() !== genAtCallTime3) return;
                 const newObj = createImageObject(asset, wx * 100, -wy * 100, { silent: true });
                 if (!newObj) return;
                 if (newObj._gizmoContainer) newObj._gizmoContainer.visible = false;
@@ -1592,20 +1609,12 @@ function _buildSandbox(obj, instRef) {
                     }
                     continue;
                 }
-                const bb=_getAABB(o);
-                const iDx=rdx!==0?1/rdx:Infinity, iDy=rdy!==0?1/rdy:Infinity;
-                let tx1=(bb.left-px1)*iDx, tx2=(bb.right-px1)*iDx;
-                let ty1=(bb.top-py1)*iDy,  ty2=(bb.bottom-py1)*iDy;
-                if(tx1>tx2){const s=tx1;tx1=tx2;tx2=s;}
-                if(ty1>ty2){const s=ty1;ty1=ty2;ty2=s;}
-                const tmin=Math.max(tx1,ty1),tmax=Math.min(tx2,ty2);
-                if(tmin>tmax||tmax<0||tmin>1) continue;
-                const t=Math.max(0,tmin);
-                if(t<bestT){
-                    bestT=t; best=o; bestIsTile=false;
-                    if(tx1>ty1){bestNx=rdx<0?1:-1;bestNy=0;}
-                    else{bestNx=0;bestNy=rdy<0?1:-1;}
-                }
+                // ── OBB intersection (correct for rotated objects) ──────────
+                const obb = _getOBBParams(o);
+                const hit = _raycastOBB(px1, py1, px2, py2, obb.cx, obb.cy, obb.hw, obb.hh, obb.angle);
+                if (!hit || hit.t >= bestT) continue;
+                bestT = hit.t; best = o; bestIsTile = false;
+                bestNx = hit.nx; bestNy = hit.ny;
             }
             if(window._zeGizmos?.raycasts){
                 const gz=window._zeGizmos, col=gz.raycastColor??'#00ff44';
@@ -1668,20 +1677,14 @@ function _buildSandbox(obj, instRef) {
                     }
                     continue;
                 }
-                const bb=_getAABB(o);
-                const iDx=rdx!==0?1/rdx:Infinity,iDy=rdy!==0?1/rdy:Infinity;
-                let tx1=(bb.left-px1)*iDx,tx2=(bb.right-px1)*iDx;
-                let ty1=(bb.top-py1)*iDy, ty2=(bb.bottom-py1)*iDy;
-                if(tx1>tx2){const s=tx1;tx1=tx2;tx2=s;}
-                if(ty1>ty2){const s=ty1;ty1=ty2;ty2=s;}
-                const tmin=Math.max(tx1,ty1),tmax=Math.min(tx2,ty2);
-                if(tmin>tmax||tmax<0||tmin>1) continue;
-                const t=Math.max(0,tmin);
-                let nx=0,ny=0;
-                if(tx1>ty1){nx=rdx<0?1:-1;}else{ny=rdy<0?1:-1;}
+                // ── OBB intersection (correct for rotated objects) ──────────
+                const obb=_getOBBParams(o);
+                const hit=_raycastOBB(px1,py1,px2,py2,obb.cx,obb.cy,obb.hw,obb.hh,obb.angle);
+                if(!hit) continue;
+                const t=hit.t;
                 const hx=px1+t*rdx,hy=py1+t*rdy;
                 const r=_makeProxy(o);
-                r._rayHit={point:{x:hx/100,y:-hy/100},normal:{x:nx,y:-ny},distance:t*rlen/100,fraction:t,isTile:false,tile:null};
+                r._rayHit={point:{x:hx/100,y:-hy/100},normal:{x:hit.nx,y:-hit.ny},distance:t*rlen/100,fraction:t,isTile:false,tile:null};
                 r.point=r._rayHit.point; r.normal=r._rayHit.normal; r.distance=r._rayHit.distance;
                 r.fraction=r._rayHit.fraction; r.isTile=false; r.tile=null; r.sprite=r;
                 hits.push({proxy:r,t});
@@ -1993,15 +1996,21 @@ function _buildSandbox(obj, instRef) {
          *   smooth       — follow lag 0–30 (default 16, 0 = instant snap)
          *   clamp        — keep inside game canvas (default false)
          *   scale        — scale factor while held (default 1.08)
+         *   stiffness    — dynamic-body bodies only: how hard the object is
+         *                  pulled toward your cursor (default 18). Higher =
+         *                  snappier follow but can punch through thin walls;
+         *                  lower = softer, more "weighty" drag that respects
+         *                  collisions better.
          *   onDrag(x, y) — called every frame while dragging with world pos
          *   onDrop(x, y) — called when released, receives world position
          */
         makeDraggable(opts = {}) {
-            const smooth   = opts.smooth  ?? 16;
-            const clamp    = opts.clamp   ?? false;
-            const scaleMul = opts.scale   ?? 1.08;
-            const onDrop   = opts.onDrop  ?? null;
-            const onDragCb = opts.onDrag  ?? null;
+            const smooth    = opts.smooth    ?? 16;
+            const clamp     = opts.clamp     ?? false;
+            const scaleMul  = opts.scale     ?? 1.08;
+            const stiffness = opts.stiffness ?? 18;
+            const onDrop    = opts.onDrop    ?? null;
+            const onDragCb  = opts.onDrag    ?? null;
             let   held     = false;
             let   origSX   = 1, origSY   = 1;
 
@@ -2029,6 +2038,7 @@ function _buildSandbox(obj, instRef) {
                 _activeDragObj  = obj;
                 _activeDragOpts = {
                     smooth,
+                    stiffness,
                     clampToGameBounds: clamp,
                     onDragFrame: onDragCb,
                     onDrop: () => release(),
@@ -2054,6 +2064,8 @@ function _buildSandbox(obj, instRef) {
          * Options:
          *   offsetX / offsetY   — world-unit offset from cursor centre (default 0)
          *   clampToGameBounds   — keep inside game canvas (default false)
+         *   stiffness           — dynamic-body bodies only: pull strength toward
+         *                         cursor (default 18, higher = snappier)
          *   onDrag(x, y)        — called every frame while dragging
          *   onDrop(obj)         — called once when finger/mouse is released
          */
