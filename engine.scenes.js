@@ -109,7 +109,10 @@ export function playModeGotoScene(index, onReady = null) {
     const target = state.scenes[index];
     if (!target) { _sceneTransitioning = false; return; }
 
-    // Stop scripts/physics for the current scene
+    // Stop scripts/physics for the current scene.
+    // stopScripts() called WITHOUT clearGlobals — globalVar must survive both
+    // Restart Scene and Switch Scene (in-play gotoScene); it only resets on
+    // a full Stop (see stopPlayMode in engine.playmode.js).
     Promise.all([
         import('./engine.scripting.js').then(m => { m.stopScripts(); m.clearSceneVars(); }),
         import('./engine.physics.js').then(m => m.stopPhysics()),

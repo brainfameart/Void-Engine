@@ -680,16 +680,26 @@ function _buildSandbox(obj, instRef) {
         camera: _camera,
 
         // ── SCENE VARIABLES ──────────────────────────────────
-        /** Shared across all scripts in this scene. Resets on scene change. */
+        /**
+         * Shared across all scripts in THIS scene only.
+         * Resets (clears) on: Restart Scene, Switch Scene, AND Stop Play.
+         */
         get sceneVar() { return _sceneVars; },
         /** Scene canvas settings — gameWidth, gameHeight, scalingMode, bgColor, etc. */
         get sceneSettings() { return state.sceneSettings ?? {}; },
 
         // ── GLOBAL VARIABLES ─────────────────────────────────
         /**
-         * Shared across ALL scripts in ALL scenes. Persists until Play stops.
+         * Shared across ALL scripts in ALL scenes, for the current play session.
          * Example:  globalVar.score = 0;   globalVar.score += 10;
          * Any script can read/write the same values.
+         *
+         * Reset behavior:
+         *   Restart Scene  → KEPT   (survives restartScene())
+         *   Switch Scene   → KEPT   (survives gotoScene() during play)
+         *   Stop Play      → RESET  (cleared back to editor state when Play stops)
+         * Use globalVar for things like score/inventory that should survive a
+         * "Retry" or level transition but start clean on the next Play session.
          */
         get globalVar() { return _globalVars; },
 
@@ -1579,27 +1589,82 @@ function _buildSandbox(obj, instRef) {
             return hits;
         },
 
-        raycast(x1, y1, x2, y2, tag = null) {
+        // ── Filter option parsing shared by raycast / raycastAll ───────────────
+        // Accepts the legacy string form (tag or "colliders") OR an options
+        // object for finer control:
+        //   raycast(x1,y1,x2,y2, "wall")                         — legacy: tag string
+        //   raycast(x1,y1,x2,y2, "colliders")                    — legacy: colliders-only
+        //   raycast(x1,y1,x2,y2, { tag:"wall" })                 — same as tag string
+        //   raycast(x1,y1,x2,y2, { ignoreTags:["Player","Friendly"] })
+        //   raycast(x1,y1,x2,y2, { ignore:[player, weaponProxy] })  — ignore specific objects
+        //   raycast(x1,y1,x2,y2, { ignoreSelf:false })           — allow self-hits (off by default)
+        //   raycast(x1,y1,x2,y2, { tag:"enemy", ignoreTags:["Boss"], ignore:[shield] })
+        // ignoreSelf defaults to true — self-exclusion stays guaranteed unless
+        // a script explicitly opts out with ignoreSelf:false.
+        _parseRayFilter(arg) {
+            if (arg == null) return { tag:null, collidersOnly:false, ignoreTags:null, ignoreSet:null, ignoreSelf:true };
+            if (typeof arg === 'string') {
+                return { tag: arg, collidersOnly: arg === 'colliders', ignoreTags:null, ignoreSet:null, ignoreSelf:true };
+            }
+            // Options object
+            const tag = arg.tag ?? null;
+            const ignoreTagsArr = Array.isArray(arg.ignoreTags) ? arg.ignoreTags.map(String) : null;
+            // `ignore` accepts proxies, raw objects, or labels (strings) — normalize to a Set of raw objs + a label Set
+            const ignoreList = Array.isArray(arg.ignore) ? arg.ignore : null;
+            let ignoreSet = null, ignoreLabelSet = null;
+            if (ignoreList) {
+                ignoreSet = new Set();
+                for (const it of ignoreList) {
+                    if (it == null) continue;
+                    if (typeof it === 'string') { (ignoreLabelSet ??= new Set()).add(it); continue; }
+                    const raw = it._ref ?? it; // unwrap proxy → real container
+                    ignoreSet.add(raw);
+                }
+            }
+            return {
+                tag,
+                collidersOnly: tag === 'colliders',
+                ignoreTags: ignoreTagsArr,
+                ignoreSet, ignoreLabelSet,
+                ignoreSelf: arg.ignoreSelf !== false, // default true unless explicitly false
+            };
+        },
+
+        raycast(x1, y1, x2, y2, filterArg = null) {
             // tag='colliders' → only physics bodies + tilemaps (skip backgrounds/decorations)
+            // SELF-EXCLUSION GUARANTEE: a ray can never hit the object that fired it,
+            // UNLESS the caller explicitly passes { ignoreSelf:false }.
+            // `obj` here is the exact same container reference this script instance is
+            // bound to (see _buildSandbox(obj, ...)), so `o === obj` is a reliable identity
+            // check — it's applied both when building the candidate list AND inside
+            // passes(), so self can never slip through via the tag/tilemap branches either.
+            const f = this._parseRayFilter(filterArg);
+            const { tag, collidersOnly, ignoreTags, ignoreSet, ignoreLabelSet, ignoreSelf } = f;
             const px1=x1*100, py1=-y1*100, px2=x2*100, py2=-y2*100;
             const rdx=px2-px1, rdy=py2-py1;
             const rlen=Math.sqrt(rdx*rdx+rdy*rdy);
             if (rlen===0) return null;
-            const collidersOnly = tag==='colliders';
             const useTag = !collidersOnly && tag!=null;
+            const isIgnored = o => {
+                if (ignoreSelf && o===obj) return true; // self-exclusion (default on)
+                if (ignoreSet && ignoreSet.has(o)) return true;
+                if (ignoreLabelSet && ignoreLabelSet.has(o.label)) return true;
+                if (ignoreTags && ignoreTags.includes(o._scriptTag ?? '')) return true;
+                return false;
+            };
             const passes = o => {
-                if (!o.visible||o===obj) return false;
+                if (!o.visible || isIgnored(o)) return false;
                 if (collidersOnly) return (o.physicsBody??'none')!=='none'||o.isTilemap||o.isAutoTilemap;
                 if (useTag) return (o._scriptTag??'')===String(tag);
                 return true;
             };
             let candidates = useTag
-                ? [...(_tagRegistry.get(tag)||[])].map(i=>i.obj)
+                ? [...(_tagRegistry.get(tag)||[])].map(i=>i.obj).filter(o=>!(ignoreSelf && o===obj))
                 : state.gameObjects;
             if (useTag || collidersOnly) {
                 // Include tilemaps/autotilemaps that pass the filter
                 for (const o of state.gameObjects)
-                    if ((o.isTilemap||o.isAutoTilemap)&&passes(o)&&!candidates.includes(o))
+                    if (!(ignoreSelf && o===obj) && (o.isTilemap||o.isAutoTilemap)&&passes(o)&&!candidates.includes(o))
                         candidates.push(o);
             }
             let best=null, bestT=1.0001, bestNx=0, bestNy=0;
@@ -1658,23 +1723,34 @@ function _buildSandbox(obj, instRef) {
             return result;
         },
 
-        raycastAll(x1, y1, x2, y2, tag = null) {
+        raycastAll(x1, y1, x2, y2, filterArg = null) {
+            // SELF-EXCLUSION GUARANTEE: same as raycast() — the firing object can never
+            // appear in its own hit list, unless { ignoreSelf:false } is passed.
+            // Same options-object support as raycast(): tag, ignoreTags, ignore, ignoreSelf.
+            const f = this._parseRayFilter(filterArg);
+            const { tag, collidersOnly, ignoreTags, ignoreSet, ignoreLabelSet, ignoreSelf } = f;
             const px1=x1*100,py1=-y1*100,px2=x2*100,py2=-y2*100;
             const rdx=px2-px1,rdy=py2-py1;
             const rlen=Math.sqrt(rdx*rdx+rdy*rdy);
             if(rlen===0) return [];
-            const collidersOnly=tag==='colliders';
             const useTag=!collidersOnly&&tag!=null;
+            const isIgnored = o => {
+                if (ignoreSelf && o===obj) return true;
+                if (ignoreSet && ignoreSet.has(o)) return true;
+                if (ignoreLabelSet && ignoreLabelSet.has(o.label)) return true;
+                if (ignoreTags && ignoreTags.includes(o._scriptTag ?? '')) return true;
+                return false;
+            };
             const passes=o=>{
-                if(!o.visible||o===obj)return false;
+                if(!o.visible || isIgnored(o)) return false;
                 if(collidersOnly)return(o.physicsBody??'none')!=='none'||o.isTilemap||o.isAutoTilemap;
                 if(useTag)return(o._scriptTag??'')===String(tag);
                 return true;
             };
-            let candidates=useTag?[...(_tagRegistry.get(tag)||[])].map(i=>i.obj):state.gameObjects;
+            let candidates=useTag?[...(_tagRegistry.get(tag)||[])].map(i=>i.obj).filter(o=>!(ignoreSelf && o===obj)):state.gameObjects;
             if(useTag||collidersOnly){
                 for(const o of state.gameObjects)
-                    if((o.isTilemap||o.isAutoTilemap)&&passes(o)&&!candidates.includes(o))
+                    if(!(ignoreSelf && o===obj) && (o.isTilemap||o.isAutoTilemap)&&passes(o)&&!candidates.includes(o))
                         candidates.push(o);
             }
             const hits=[];
@@ -1723,15 +1799,20 @@ function _buildSandbox(obj, instRef) {
          * Cast a ray from THIS object's position at a given angle.
          * raycastFromSelf(0, 10)              — cast rightward 10 units
          * raycastFromSelf(90, 5, "wall")      — cast upward 5 units, only walls
+         * raycastFromSelf(0, 10, { ignoreTags:["Player","Friendly"] })
+         * raycastFromSelf(0, 10, { ignore:[someProxy], ignoreSelf:true })
          * angle: degrees (0=right, 90=up, 180=left, 270=down)
+         * The ray starts exactly at this object's own center, but it can NEVER
+         * hit this object itself — self-exclusion is guaranteed inside raycast()
+         * unless the options object passes ignoreSelf:false.
          */
-        raycastFromSelf(angleDeg, distance, tag = null) {
+        raycastFromSelf(angleDeg, distance, filterArg = null) {
             const rad = (angleDeg * Math.PI) / 180;
             const sx  = obj.x / 100;
             const sy  = -(obj.y / 100);
             const ex  = sx + Math.cos(rad) * distance;
             const ey  = sy + Math.sin(rad) * distance;
-            return this.raycast(sx, sy, ex, ey, tag);
+            return this.raycast(sx, sy, ex, ey, filterArg);
         },
 
         // ── PATHFINDING / NAVIGATION ─────────────────────────

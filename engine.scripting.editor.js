@@ -241,12 +241,12 @@ const COMPLETIONS = [
     { n:'stopPhysics',           m:'physics',             v:'stopPhysics()', d:'Zero out all physics velocity and forces.'},
     { n:'setImmovable',          m:'physics',             v:'setImmovable(${1:true})', d:'true = this body cannot be pushed by other bodies.' },
     // Kinematic ground / wall detection
-    { n:'isOnGround',            m:'physics (kinematic)', v:'isOnGround()', d:'True if touching a floor surface within the ground-angle threshold. Never true at the same time as isOnSlope().'},
-    { n:'isOnCeiling',           m:'physics (kinematic)', v:'isOnCeiling()', d:'True if this body is touching a ceiling from below.'},
-    { n:'isOnWall',              m:'physics (kinematic)', v:'isOnWall()', d:'True if this body is touching a wall on either side.'},
-    { n:'isOnSlope',             m:'physics (kinematic)', v:'isOnSlope()', d:'True if standing on a surface steeper than the ground-angle threshold. Never true at the same time as isOnGround().'},
-    { n:'getSlopeAngle',         m:'physics (kinematic)', v:'getSlopeAngle()', d:'Returns the tilt angle in degrees of the slope currently under this body (0 = flat, 45 = diagonal). Returns 0 when not on a slope.'},
-    { n:'setGroundAngle',        m:'physics (kinematic)', v:'setGroundAngle(${1:45})', d:'Set the angle threshold (degrees) that separates isOnGround from isOnSlope. Surfaces ≤ this angle = ground; steeper = slope. Default 45.'},
+    { n:'isOnGround',            m:'physics (kinematic+dynamic)', v:'isOnGround()', d:'True if touching a floor surface within the ground-angle threshold, recomputed every physics step. Works for Kinematic and Dynamic bodies. Updates after move(), moveForward(), setX/setY, x=/y=, moveTo(), velocityX/Y, setVelocity, applyForce/Impulse. Never true at the same time as isOnSlope().'},
+    { n:'isOnCeiling',           m:'physics (kinematic+dynamic)', v:'isOnCeiling()', d:'True if this body is touching a ceiling from below, recomputed every physics step. Works for Kinematic and Dynamic bodies.'},
+    { n:'isOnWall',              m:'physics (kinematic+dynamic)', v:'isOnWall()', d:'True if this body is touching a wall on either side, recomputed every physics step. Works for Kinematic and Dynamic bodies.'},
+    { n:'isOnSlope',             m:'physics (kinematic+dynamic)', v:'isOnSlope()', d:'True if standing on a surface steeper than the ground-angle threshold, recomputed every physics step. Works for Kinematic and Dynamic bodies. Never true at the same time as isOnGround().'},
+    { n:'getSlopeAngle',         m:'physics (kinematic+dynamic)', v:'getSlopeAngle()', d:'Returns the tilt angle in degrees of the slope currently under this body (0 = flat, 45 = diagonal). Returns 0 when not on a slope. Works for Kinematic and Dynamic bodies.'},
+    { n:'setGroundAngle',        m:'physics (kinematic+dynamic)', v:'setGroundAngle(${1:45})', d:'Set the angle threshold (degrees) that separates isOnGround from isOnSlope. Surfaces ≤ this angle = ground; steeper = slope. Default 45. Works for Kinematic and Dynamic bodies.'},
     // Direct physics state getters (also work via find("Name").isOnSlope etc.)
     { n:'velX',                  m:'physics',             v:'velX', d:'Actual physics velocity X in world units/sec (+right). Works for kinematic and dynamic. Read-only shorthand.'},
     { n:'velY',                  m:'physics',             v:'velY', d:'Actual physics velocity Y in world units/sec (+up). Works for kinematic and dynamic. Read-only shorthand.'},
@@ -270,8 +270,8 @@ const COMPLETIONS = [
     { n:'physics.setImmovable',        m:'physics',             v:'physics.setImmovable(${1:true})', d:'Make this body immovable by other bodies.' },
     { n:'physics.immovable',           m:'physics',             v:'physics.immovable', d:'True if this body is currently set to immovable. Read-only.'},
     // Shared variables
-    { n:'sceneVar',          m:'vars',      v:'sceneVar.${1:myVar}', d:'Shared variable store for the current scene. Resets on scene change.' },
-    { n:'globalVar',         m:'vars',      v:'globalVar.${1:myVar}', d:'Shared variable store that persists across all scenes.' },
+    { n:'sceneVar',          m:'vars',      v:'sceneVar.${1:myVar}', d:'Shared variable store for the current scene. Resets on Restart Scene, Switch Scene, and Stop Play.' },
+    { n:'globalVar',         m:'vars',      v:'globalVar.${1:myVar}', d:'Shared variable store for this play session. Survives Restart Scene and Switch Scene; resets to editor state when Play stops.' },
     { n:'GameSave',          m:'save',      v:'GameSave',                                      d:'Persistent save system — survives page close & refresh' },
     { n:'GameSave.set',      m:'save',      v:"GameSave.set('${1:key}', ${2:value})", d:'Save a value permanently. GameSave.set("score", 100).',          d:'Save a value permanently. GameSave.set("score", 100)' },
     { n:'GameSave.get',      m:'save',      v:"GameSave.get('${1:key}', ${2:defaultValue})", d:'Load a saved value. Second arg = default if key not found yet.',   d:'Load a saved value. Second arg = default if not found yet' },
@@ -356,8 +356,11 @@ const COMPLETIONS = [
     { n:'cloneObject',       m:'clone',    v:"cloneObject('${1:Name}', ${2:x}, ${3:y})", d:'Clone any object by name at (x, y). Copies all its properties.' },
     { n:'cloneObject cb',    m:'clone',    v:"cloneObject('${1:Name}', ${2:x}, ${3:y}, (c) => {\n  ${4:c.velocityX = 3;}\n})", d:'Clone any object with a callback to configure it on spawn.' },
     // Raycast
-    { n:'raycast',           m:'raycast',  v:'raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2})', d:'Cast a ray from (x1,y1) to (x2,y2). Returns the first hit, or null.' },
-    { n:'raycast tag',       m:'raycast',  v:"raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, '${5:enemy}')", d:'Raycast filtered to only hit objects with a specific tag.' },
+    { n:'raycast',           m:'raycast',  v:'raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2})', d:'Cast a ray from (x1,y1) to (x2,y2). Returns the first hit, or null. Never hits the object that cast it.' },
+    { n:'raycast tag',       m:'raycast',  v:"raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, '${5:enemy}')", d:'Raycast filtered to only hit objects with a specific tag. Never hits the object that cast it.' },
+    { n:'raycast ignoreTags',m:'raycast',  v:"raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, { ignoreTags: ['${5:Player}', '${6:Friendly}'] })", d:'Raycast that skips every object whose tag is in the ignoreTags list. Self is still always excluded.' },
+    { n:'raycast ignore',    m:'raycast',  v:"raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, { ignore: [${5:weaponProxy}] })", d:'Raycast that skips specific objects — pass proxies (e.g. a held weapon) or label strings.' },
+    { n:'raycast options',   m:'raycast',  v:"raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, {\n  tag: '${5:enemy}',\n  ignoreTags: ['${6:Boss}'],\n  ignore: [${7:shieldProxy}],\n  ignoreSelf: ${8:true},\n})", d:'Full raycast options object: tag filters TO a tag, ignoreTags/ignore filter objects OUT, ignoreSelf controls self-hits (default true).' },
     // Radius query
     { n:'getObjectsInRadius',m:'radius',   v:'getObjectsInRadius(${1:cx}, ${2:cy}, ${3:radius})', d:'Returns all objects within radius of (cx, cy). Optional tag filter.' },
     // Z-order
@@ -430,9 +433,12 @@ const COMPLETIONS = [
     { n:'onceAfter',         m:'timer',    v:'onceAfter(${1:2}, () => {\n  ${2:destroySelf();}\n})', d:'Run a callback once after delay seconds (like wait, more explicit name).' },
 
     // ── Raycast (extended) ─────────────────────────────────
-    { n:'raycastAll',        m:'raycast',  v:'raycastAll(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2})', d:'Like raycast but returns all hits as an array.' },
-    { n:'raycastFromSelf',   m:'raycast',  v:'raycastFromSelf(${1:0}, ${2:8})', d:'Cast a ray from this object\'s center at angleDeg for a given distance.' },
-    { n:'raycastFromSelf tag',m:'raycast', v:"raycastFromSelf(${1:0}, ${2:8}, '${3:wall}')", d:'Raycast from self, filtered to a specific tag.' },
+    { n:'raycastAll',        m:'raycast',  v:'raycastAll(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2})', d:'Like raycast but returns all hits as an array, nearest→farthest. Never includes the casting object itself.' },
+    { n:'raycastAll ignoreTags',m:'raycast',v:"raycastAll(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, { ignoreTags: ['${5:Player}'] })", d:'raycastAll filtered to skip objects whose tag is in ignoreTags.' },
+    { n:'raycastFromSelf',   m:'raycast',  v:'raycastFromSelf(${1:0}, ${2:8})', d:'Cast a ray from this object\'s center at angleDeg for a given distance. Starts inside this object but will never hit it — self-exclusion is guaranteed.' },
+    { n:'raycastFromSelf tag',m:'raycast', v:"raycastFromSelf(${1:0}, ${2:8}, '${3:wall}')", d:'Raycast from self, filtered to a specific tag. Never hits this object, even if it matches the tag.' },
+    { n:'raycastFromSelf ignoreTags',m:'raycast', v:"raycastFromSelf(${1:0}, ${2:8}, { ignoreTags: ['${3:Player}', '${4:Friendly}'] })", d:'Raycast from self that skips every object whose tag is in ignoreTags.' },
+    { n:'raycastFromSelf ignore',m:'raycast', v:"raycastFromSelf(${1:0}, ${2:8}, { ignore: [${3:weaponProxy}] })", d:'Raycast from self that skips specific objects — pass proxies or label strings.' },
     { n:'hit.distance',      m:'raycast',  v:'${1:hit}.distance', d:'Distance from the ray origin to the hit point.' },
     { n:'hit.point.x',       m:'raycast',  v:'${1:hit}.point.x', d:'World X coordinate where the ray hit.' },
     { n:'hit.normal.x',      m:'raycast',  v:'${1:hit}.normal.x', d:'Surface normal X at the hit point. Use to deflect projectiles.' },
@@ -1520,7 +1526,25 @@ function _sidebarHTML() {
             '// hit.point.x  hit.point.y',
             '// hit.normal.x  hit.normal.y',
             '// hit.distance  hit.isTile',
+            '// self-exclusion: a ray NEVER hits the object that fired it,',
+            '// even raycastFromSelf, which starts inside its own bounds.',
             'Gizmos.raycasts = true',
+        ]],
+        ['Raycast Filters (options object)', [
+            '// 5th arg can be a string (tag/"colliders") OR an object:',
+            'raycast(x1, y1, x2, y2, { ignoreTags: ["Player", "Friendly"] })',
+            '// skip everything whose tag is in ignoreTags',
+            'raycast(x1, y1, x2, y2, { ignore: [weaponProxy, "Barrel"] })',
+            '// skip specific objects — pass proxies and/or label strings',
+            'raycast(x1, y1, x2, y2, { ignoreSelf: false })',
+            '// opt OUT of self-exclusion (default is always true)',
+            'raycast(x1, y1, x2, y2, {',
+            '  tag: "enemy",            // only consider this tag',
+            '  ignoreTags: ["Boss"],    // but skip these tags',
+            '  ignore: [shieldProxy],   // and skip these exact objects',
+            '})',
+            '// same options object works on raycastAll() and raycastFromSelf()',
+            'raycastFromSelf(getRotation(), 8, { ignoreTags: ["Player"] })',
         ]],
         ['Health / Damage', [
             'setHealth(100)  /  getHealth()',
@@ -1557,12 +1581,19 @@ function _sidebarHTML() {
             'soundStopAll()',
         ]],
         ['Shared Vars', [
-            'sceneVar.score = 0         // per-scene',
-            'globalVar.lives = 3        // all scenes',
+            'sceneVar.score = 0         // this scene only',
+            'globalVar.lives = 3        // all scenes, this play session',
             'store.set("key", val)      // persistent (localStorage)',
             'store.get("key")           // reads from localStorage',
             'sceneSettings.gameWidth',
             'sceneSettings.gameHeight',
+            '// ── Reset behavior ──────────────────────────',
+            '// sceneVar:  reset on Restart Scene, Switch Scene, Stop Play',
+            '// globalVar: KEPT on Restart Scene and Switch Scene,',
+            '//            reset to editor state only on Stop Play',
+            '// Object vars (opts, health, ammo, state) always reset —',
+            '// every object is destroyed + recreated from the scene',
+            '// snapshot on Restart, Switch, and Stop.',
         ]],
         ['AI Navigation', [
             'walkTo(x, y)',
@@ -1762,6 +1793,26 @@ function _defaultScript(name) {
 //   raycastFromSelf(angleDeg, dist)   — fires from self, angle in degrees
 //                                       0=right  90=up  180=left  270=down
 //
+// FILTER OPTIONS — the last argument can be a string (legacy: a tag, or
+// "colliders") OR an options object for finer control over what a ray
+// can/can't hit:
+//   raycast(x1,y1,x2,y2, { ignoreTags:["Player","Friendly"] })
+//                                     — skip every object with these tags
+//   raycast(x1,y1,x2,y2, { ignore:[weaponProxy, "Barrel"] })
+//                                     — skip specific objects: proxies or label strings
+//   raycast(x1,y1,x2,y2, { ignoreSelf:false })
+//                                     — opt OUT of self-exclusion (default is always true)
+//   raycast(x1,y1,x2,y2, { tag:"enemy", ignoreTags:["Boss"], ignore:[shield] })
+//                                     — combine: only "enemy"-tagged, but skip Boss + shield
+// The same options object works on raycastAll() and raycastFromSelf() too.
+//
+// SELF-EXCLUSION GUARANTEE:
+//   A raycast can NEVER hit the object that fired it — not raycast(), not
+//   raycastAll(), not raycastFromSelf() — even though raycastFromSelf starts
+//   the ray exactly at this object's own center, inside its own bounds.
+//   This is guaranteed by the engine by default; pass { ignoreSelf:false }
+//   in the options object if a script genuinely needs to hit itself.
+//
 // Hit object fields:
 //   hit.point.x / hit.point.y        — world position of the impact
 //   hit.normal.x / hit.normal.y      — surface normal at impact
@@ -1781,6 +1832,52 @@ function _defaultScript(name) {
 // Debug visualization (add in onStart):
 //   Gizmos.raycasts   = true;        — show all raycasts as colored lines
 //   Gizmos.collision  = true;        — show collision shapes
+//
+// ── GROUND / SLOPE / WALL / CEILING DETECTION ────────────────────
+//
+// These flags are recomputed by the physics step every frame from the
+// body's actual contact manifolds — they describe what's true RIGHT NOW,
+// this frame, not a cached or stale value. Works for Kinematic AND Dynamic
+// bodies (Static bodies don't move, so they're never "on" anything).
+//
+//   isOnGround()      — true on a floor contact ≤ groundAngle from flat
+//   isOnSlope()       — true on a floor contact steeper than groundAngle
+//                        (isOnGround and isOnSlope are mutually exclusive)
+//   isOnCeiling()     — true when something is hit from above
+//   isOnWall()        — true when pressed against a wall on either side
+//   getSlopeAngle()   — tilt in degrees of the slope underfoot (0 if none)
+//   setGroundAngle(45)— set the ground/slope split threshold, in degrees
+//                        (≤ this angle = ground, > this angle = slope)
+//
+// Equivalent direct-access forms (same data, read via the physics object):
+//   physics.isOnGround   physics.isOnCeiling   physics.isOnWall
+//   physics.isOnSlope    physics.slopeAngle    physics.groundAngle
+//   physics.setGroundAngle(deg)
+//
+// Typical ground check, every frame in onUpdate:
+//   if (isOnGround()) {
+//     velocityY = 0;              // stop gravity from accumulating
+//   } else if (isOnSlope()) {
+//     log("On a", getSlopeAngle().toFixed(0) + "° slope");
+//   }
+//
+// WHICH MOVEMENT CALLS FEED GROUND/SLOPE/WALL DETECTION:
+//   These all participate in the same collision sweep the physics step
+//   uses to compute isOnGround/isOnSlope/isOnWall/isOnCeiling, so calling
+//   any of them keeps detection accurate on the very next frame:
+//     move(dx, dy)          — kinematic: swept + collision-resolved
+//                              dynamic:  direct position change
+//     moveForward(speed)    — kinematic: swept + collision-resolved
+//                              dynamic:  direct position change
+//     x = value / setX(v)   — teleport; kinematic resets its delta tracker
+//                              so the NEXT physics step reads correctly
+//     y = value / setY(v)   — same as x=, vertical axis
+//     moveTo(x, y)          — teleport (warp/respawn), same as x=/y= together
+//     velocityX / velocityY — dynamic: applied by the physics engine itself
+//     setVelocity(vx, vy)   — dynamic: same, both axes at once
+//     applyForce / applyImpulse — dynamic only; physics engine moves the body
+//   Static bodies and physicsImmovable objects never move, so none of the
+//   above apply — isOnGround/isOnSlope/etc. are always false for them.
 // ================================================================
 
 
@@ -1804,6 +1901,8 @@ onUpdate((dt) => {
   // ════════════════════════════════════════════════════════════════
 
   // ── 1. Probe directly below (floor/ground detection) ────────────
+  // Safe to fire from inside/at this object's own position — raycast()
+  // can never hit the object that called it, so this won't self-collide.
   // var below = raycast(getX(), getY(), getX(), getY() - 2);
   // if (below) {
   //   if (below.isTile) {
@@ -1827,6 +1926,16 @@ onUpdate((dt) => {
   // var mhit = raycast(getX(), getY(), mouseX(), mouseY());
   // if (mhit) {
   //   log("Mouse ray hit:", mhit.name || "tile");
+  // }
+
+
+  // ── 3b. Shoot but ignore friendly/player tags and specific objects ──
+  // var mhit2 = raycast(getX(), getY(), mouseX(), mouseY(), {
+  //   ignoreTags: ["Player", "Friendly"],
+  //   ignore: [myWeaponProxy],
+  // });
+  // if (mhit2) {
+  //   log("Hit an enemy/wall, not a friendly:", mhit2.name);
   // }
 
 
@@ -1876,6 +1985,18 @@ onUpdate((dt) => {
   //     drawDebugLine(getX(), getY(), r.point.x, r.point.y, "#ff8800", 0, 1);
   //   }
   // }
+
+
+  // ── 10. Ground / slope / wall / ceiling detection (kinematic+dynamic) ──
+  // These flags update every physics step, so they reflect this exact
+  // frame's contacts — call them right after move()/moveForward() runs.
+  // if (isOnGround()) {
+  //   velocityY = 0;                       // stop gravity from building up
+  // } else if (isOnSlope()) {
+  //   log("On a " + getSlopeAngle().toFixed(0) + "° slope");
+  // }
+  // if (isOnWall())    log("Pressed against a wall");
+  // if (isOnCeiling()) log("Bumped a ceiling");
 
 });
 

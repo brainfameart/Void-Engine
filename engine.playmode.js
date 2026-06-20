@@ -70,7 +70,10 @@ export function stopPlayMode() {
     }
     state.gameObjects = state.gameObjects.filter(o => !o._runtimeSpawned);
     // Stop user scripts + clean up transitions/debug graphics
-    import('./engine.scripting.js').then(m => m.stopScripts());
+    // clearGlobals:true — this is the real Stop, so globalVar resets here
+    // (Restart Scene / Switch Scene call stopScripts() without this flag,
+    // so globalVar correctly survives those).
+    import('./engine.scripting.js').then(m => m.stopScripts(true));
     import('./engine.transitions.js').then(m => m.cleanupTransitions());
     // Reset the scene-transition guard so the next Play press always works
     import('./engine.scenes.js').then(m => m._resetSceneTransitionGuard?.());

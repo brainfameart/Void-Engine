@@ -1254,27 +1254,39 @@ function drawText(text, x, y, styleOpts = {}) {
  * Uses a proper AABB slab intersection test.
  * raycast(x, y, x+10, y)              — any object
  * raycast(x, y, x+10, y, "enemy")    — only tagged "enemy"
+ * raycast(x, y, x+10, y, { ignoreTags:["Player","Friendly"] })
+ * raycast(x, y, x+10, y, { ignore:[someProxy, "BarrelLabel"] })
+ * raycast(x, y, x+10, y, { tag:"enemy", ignoreTags:["Boss"], ignoreSelf:true })
  * Result has: .name, .x, .y  and  ._rayHit = { point, normal, distance, fraction }
+ * Self-exclusion: the calling object can never hit itself, even if the ray
+ * starts inside its own bounds (e.g. raycastFromSelf, or a ray that begins
+ * at this object's own x/y) — unless the options object passes ignoreSelf:false.
  */
-function raycast(x1, y1, x2, y2, tag) { return api.raycast(x1, y1, x2, y2, tag ?? null); }
+function raycast(x1, y1, x2, y2, filterArg) { return api.raycast(x1, y1, x2, y2, filterArg ?? null); }
 
 /**
  * Fire a ray and return ALL objects hit, sorted nearest→farthest.
  * raycastAll(x, y, x+10, y)
  * raycastAll(x, y, x+10, y, "wall")
+ * raycastAll(x, y, x+10, y, { ignoreTags:["Player"], ignore:[shieldProxy] })
  * Returns array — each element has ._rayHit = { point, normal, distance, fraction }
+ * Self-exclusion: the calling object is never included in the results,
+ * unless the options object passes ignoreSelf:false.
  */
-function raycastAll(x1, y1, x2, y2, tag) { return api.raycastAll(x1, y1, x2, y2, tag ?? null); }
+function raycastAll(x1, y1, x2, y2, filterArg) { return api.raycastAll(x1, y1, x2, y2, filterArg ?? null); }
 
 /**
  * Fire a ray from THIS object's position in a given direction.
  * raycastFromSelf(0, 10)              — cast rightward 10 units
  * raycastFromSelf(90, 5)             — cast upward 5 units
  * raycastFromSelf(180, 8, "wall")    — leftward 8 units, only walls
+ * raycastFromSelf(0, 10, { ignoreTags:["Player","Friendly"] })
  * angle: degrees (0=right, 90=up, 180=left, 270/−90=down)
+ * Self-exclusion: the ray originates AT this object's center but will never
+ * report a hit against this object itself, unless ignoreSelf:false is passed.
  */
-function raycastFromSelf(angleDeg, distance, tag) {
-    return api.raycastFromSelf(angleDeg, distance, tag ?? null);
+function raycastFromSelf(angleDeg, distance, filterArg) {
+    return api.raycastFromSelf(angleDeg, distance, filterArg ?? null);
 }
 
 // ── Radius query ───────────────────────────────────────────────
@@ -3235,14 +3247,18 @@ export function freezeScripts(freeze)  { _scriptsFrozenDuringTransition = !!free
 export function unfreezeScripts()      { _scriptsFrozenDuringTransition = false; }
 
 // ── Stop scripts (stopPlayMode) ───────────────────────────────
-export function stopScripts() {
+// clearGlobals: pass true ONLY when Play is fully stopping (back to editor).
+// Restart Scene and Switch Scene (during play) call this WITHOUT clearGlobals
+// so globalVar survives — it's meant to persist across scenes/restarts within
+// the same play session, and only reset when Play actually stops.
+export function stopScripts(clearGlobals = false) {
     _scriptsFrozenDuringTransition = false; // always unfreeze on stop
     for (const i of _instances) i.stop();
     _instances.length = 0;
     _clearRegistries();
     _camera._followTarget = null;
     clearSceneVars();
-    clearGlobalVars();  // reset between play sessions
+    if (clearGlobals) clearGlobalVars(); // only reset between play SESSIONS, not scene switches/restarts
     _clearTimers();
     _clearDebugGfx();
     if (window._zeGizmos) window._zeGizmos.collision = false; // reset collision gizmo between sessions

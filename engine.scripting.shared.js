@@ -387,7 +387,10 @@ export function _tickTimers(dt) {
         }
     }
 }
-export function _clearTimers() { _timers.length = 0; }
+export function _clearTimers() {
+    _timers.length = 0;
+    _bumpCameraSession(); // invalidate any in-flight camera.zoomTo() RAF loop
+}
 
 // ── Tween easing ──────────────────────────────────────────────
 export function _easing(t, name) {
@@ -432,6 +435,11 @@ export function _applyTweenProp(api, key, v) {
 
 // ── Camera ────────────────────────────────────────────────────
 const _cameraShake = { amplitude: 0, duration: 0, elapsed: 0 };
+// Bumped by _clearTimers() (called from stopScripts on every Restart Scene,
+// Switch Scene, and Stop Play) so any in-flight camera.zoomTo() RAF loop can
+// detect it's stale and stop itself, instead of animating into the next scene.
+let _camSession = 0;
+export function _bumpCameraSession() { _camSession++; }
 export const _camera = {
     _followTarget: null,
     _smoothing:    6,
@@ -499,13 +507,17 @@ export const _camera = {
      * Smoothly tween the camera FOV over time.
      *   camera.zoomTo(60, 1.0)   // zoom to FOV 60 over 1 second
      *   camera.zoomTo(90, 0.5)   // restore default over 0.5 seconds
+     * Self-cancelling: if Restart Scene, Switch Scene, or Stop Play happens
+     * mid-zoom, this loop stops itself instead of animating into the next
+     * scene/session.
      */
     zoomTo(targetFov, duration = 0.5) {
-        const startFov  = this.fov;
-        const startTime = performance.now() / 1000;
-        const cam = this;
+        const startFov   = this.fov;
+        const startTime  = performance.now() / 1000;
+        const cam        = this;
+        const mySession  = _camSession;
         const tick = () => {
-            if (!state.isPlaying) return;
+            if (!state.isPlaying || mySession !== _camSession) return;
             const t = Math.min(1, (performance.now() / 1000 - startTime) / Math.max(0.001, duration));
             const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // ease-in-out
             cam.fov = startFov + (targetFov - startFov) * eased;
