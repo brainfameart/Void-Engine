@@ -191,14 +191,39 @@ export function runInSandbox(fn, api, out, iframe, source) {
         const iframeFn = new iframeAsyncFn('api', '__out', source);
         return iframeFn.call(cw.__api__, cw.__api__, cw.__out__);
     } catch (secErr) {
-        // Could be a real SyntaxError in the user's code, OR the iframe eval
-        // being blocked entirely (exported game, unusual CSP). Either way,
-        // fall back to running the already-compiled `fn` directly in the
-        // parent context so the script still runs — and so the ORIGINAL,
-        // correctly-attributed error (with script/object name) still surfaces
-        // through the normal .catch() chain at the call site instead of being
-        // swallowed here as a bare console.warn.
-        console.warn('[Zengine] iframe re-compile failed, running direct:', secErr.message);
+        // ── Diagnose WHY the iframe recompile failed ────────────────────────
+        // This used to be swallowed into a bare console.warn with no source
+        // context, then silently fall back to running `fn` directly — which
+        // can ALSO fail (or behave differently, since it's now running
+        // outside the sandbox) for reasons unrelated to secErr, producing a
+        // second, even less informative unhandled rejection downstream.
+        // Log everything here, at the point we actually have the real error
+        // and the real source string, so a SyntaxError is debuggable instead
+        // of bottoming out as a bare "missing ) after argument list".
+        const isSyntaxError = secErr instanceof SyntaxError
+            || /SyntaxError/i.test(secErr?.name ?? '')
+            || /missing \)|missing }|unexpected token|unexpected end of/i.test(secErr?.message ?? '');
+        console.error(
+            '[Zengine] iframe re-compile failed.\n' +
+            `  Error: [${secErr?.name ?? typeof secErr}] ${secErr?.message ?? secErr}\n` +
+            `  Likely cause: ${isSyntaxError ? 'a real syntax error in the compiled source (see source dump below)' : 'iframe eval blocked (sandbox/CSP) — falling back to direct execution, this is usually fine'}\n` +
+            '  ── full source that failed to compile ──\n' + source
+        );
+        if (isSyntaxError) {
+            // Re-throw so this surfaces as a real, attributable error instead
+            // of silently falling back to a possibly-broken direct run. The
+            // caller's .catch() (see ScriptInstance constructor) already
+            // knows the script name/object label and will report it properly
+            // via _friendlyScriptError + the RAW ERROR / STACK / SCRIPT dump.
+            const wrapped = new SyntaxError(
+                `Script failed to compile inside the sandbox iframe: ${secErr.message}`
+            );
+            wrapped._zeSource = source;
+            wrapped._zeOrigin = 'sandbox iframe recompile (runInSandbox)';
+            throw wrapped;
+        }
+        // Not a syntax error (e.g. iframe eval genuinely blocked by CSP) —
+        // safe to fall back to direct execution outside the sandbox.
         return fn.call(api, api, out);
     }
 }

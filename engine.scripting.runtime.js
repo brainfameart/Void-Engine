@@ -1936,8 +1936,14 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
                 const _rt = _err?.name ?? 'Error';
                 const _rs = (_err?.stack ?? '').split('\n').slice(0,5).join(' | ');
                 _logConsole(`  🔍 RAW ERROR: [${_rt}] ${_rm}`, '#fb923c');
-                _logConsole(`  📋 STACK: ${_rs}`, '#94a3b8');
-                console.error('[Zengine async compile error]', _rt + ':', _rm, '\nScript:', this.name, '\nFull error:', _err);
+                _logConsole(`  📋 STACK: ${_rs || '(none — typical for a compile-time SyntaxError)'}`, '#94a3b8');
+                _logConsole(`  📝 SCRIPT: "${this.name}" on object "${this.obj.label}"`, '#94a3b8');
+                if (_err?._zeSource) {
+                    const s = _err._zeSource;
+                    const preview = s.length > 1000 ? s.slice(0, 500) + '\n  …\n  ' + s.slice(-500) : s;
+                    _logConsole(`  📄 SOURCE (${_err._zeOrigin ?? 'compile'}):\n${preview}`, '#94a3b8');
+                }
+                console.error('[Zengine async compile error]', _rt + ':', _rm, '\nScript:', this.name, '\nObject:', this.obj.label, '\nFull error:', _err, '\nSource:', _err?._zeSource ?? fullSource);
                 _jumpEditorToError(_err, code, this.name);
                 import('./engine.console.js').then(m => m.recordPlayError());
             });
