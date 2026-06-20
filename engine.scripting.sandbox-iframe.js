@@ -132,7 +132,18 @@ function _createSandboxIframe() {
  * @param {HTMLIFrameElement} iframe - The sandbox iframe to run inside
  * @returns {Promise}
  */
-export function runInSandbox(fn, api, out, iframe) {
+/**
+ * @param {Function}   fn      - The already-compiled AsyncFunction (used for the
+ *                               non-sandboxed / game-only fast path)
+ * @param {object}     api     - The live engine api for this ScriptInstance
+ * @param {object}     out     - The output object (receives registered callbacks)
+ * @param {HTMLIFrameElement} iframe - The sandbox iframe to run inside
+ * @param {string}     [source] - The exact source string used to compile `fn`
+ *                               (prelude + code + postlude). Required for the
+ *                               sandboxed path — see note below.
+ * @returns {Promise}
+ */
+export function runInSandbox(fn, api, out, iframe, source) {
     // Game-only / no-sandbox mode: run directly
     if (!iframe || window.__ZENGINE_GAME_ONLY__) {
         return fn.call(api, api, out);
@@ -162,25 +173,31 @@ export function runInSandbox(fn, api, out, iframe) {
     //   ✅ api.*                         → works (injected via cw.__api__)
     //
     // The iframe's AsyncFunction is retrieved via the same heap-access trick.
+    //
+    // IMPORTANT: we re-compile from the ORIGINAL source string (prelude + code +
+    // postlude), passed in as `source` — NOT from fn.toString() sliced between
+    // the first "{" and last "}". That string-slicing approach broke the instant
+    // user code contained an object literal (the first "{" in the whole source
+    // could be inside the prelude, not the function's opening brace) or a
+    // template literal with "${...}" (the last "}" could land mid-expression).
+    // Either case fed a truncated, unbalanced body into the iframe's
+    // AsyncFunction constructor, producing a generic, contextless
+    // "missing ) after argument list" SyntaxError with no script name attached.
     try {
         const iframeAsyncFn = Object.getPrototypeOf(
             cw.eval('(async function(){})')
         ).constructor;
 
-        // Re-compile fn's source inside the iframe.
-        // fn.toString() gives us the original source string.
-        // We wrap it to extract just the body (strip async function(api,__out){...}).
-        const src = fn.toString();
-        // Extract the body between the first { and last }
-        const bodyStart = src.indexOf('{') + 1;
-        const bodyEnd   = src.lastIndexOf('}');
-        const body      = src.slice(bodyStart, bodyEnd);
-
-        const iframeFn = new iframeAsyncFn('api', '__out', body);
+        const iframeFn = new iframeAsyncFn('api', '__out', source);
         return iframeFn.call(cw.__api__, cw.__api__, cw.__out__);
     } catch (secErr) {
-        // Fallback: if iframe eval is blocked (exported game, unusual CSP),
-        // run directly — same behaviour as before, acceptable for game-only mode.
+        // Could be a real SyntaxError in the user's code, OR the iframe eval
+        // being blocked entirely (exported game, unusual CSP). Either way,
+        // fall back to running the already-compiled `fn` directly in the
+        // parent context so the script still runs — and so the ORIGINAL,
+        // correctly-attributed error (with script/object name) still surfaces
+        // through the normal .catch() chain at the call site instead of being
+        // swallowed here as a bare console.warn.
         console.warn('[Zengine] iframe re-compile failed, running direct:', secErr.message);
         return fn.call(api, api, out);
     }

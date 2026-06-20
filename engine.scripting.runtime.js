@@ -1919,16 +1919,17 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             // The compiled function is cached by script code string — spawning
             // 100 objects with the same script only compiles once, not 100×.
             const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; // eslint-disable-line no-new-func
+            const fullSource = prelude + '\n' + code + '\n' + postlude;
             let fn = _scriptFnCache.get(code);
             if (!fn) {
-                fn = new AsyncFunction('api', '__out', prelude + '\n' + code + '\n' + postlude);
+                fn = new AsyncFunction('api', '__out', fullSource);
                 _scriptFnCache.set(code, fn);
             }
             const out = {};
             // Chain .catch IMMEDIATELY on the call — never store then attach separately.
             // Storing in a variable first creates a window where a synchronous microtask
             // rejection fires before .catch is attached, causing "Unhandled promise rejection".
-            runInSandbox(fn, api, out, this._sandboxIframe).catch(_err => {
+            runInSandbox(fn, api, out, this._sandboxIframe, fullSource).catch(_err => {
                 const friendly = _friendlyScriptError(_err, code, this.name, this.obj.label, 'compile');
                 for (const line of friendly) _logConsole(line, '#f87171');
                 const _rm = _err?.message ?? String(_err);
