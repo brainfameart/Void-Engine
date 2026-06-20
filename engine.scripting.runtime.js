@@ -72,6 +72,94 @@ function _jumpEditorToError(err, code, scriptName) {
     } catch(_) {}
 }
 
+// ── Compile a script's full source (prelude + code + postlude) ────────────
+// Isolated into its own NAMED function so that if the AsyncFunction
+// constructor throws a SyntaxError, the error's call stack has at least one
+// real frame pointing here — compile-time SyntaxErrors thrown directly at
+// the top level of a try block otherwise have NO stack frames at all (this
+// is normal V8 behavior, not a bug), which makes them impossible to trace
+// back to a specific script without extra help.
+function _compileScriptSource(AsyncFunction, fullSource, scriptName, objLabel) {
+    try {
+        return new AsyncFunction('api', '__out', fullSource);
+    } catch (err) {
+        // ── Extract line/column from the error message if the browser provides one ──
+        // V8's SyntaxError messages for `new Function(...)` rarely include a
+        // location, but some do (e.g. "Unexpected token ')' (123:45)").
+        const locMatch = /\((\d+):(\d+)\)/.exec(err?.message ?? '');
+        const errLine  = locMatch ? parseInt(locMatch[1], 10) : null;
+        const errCol   = locMatch ? parseInt(locMatch[2], 10) : null;
+
+        // ── Numbered source dump — visible in DevTools OR the in-engine
+        // console, since it's pushed through both console.error() and
+        // _logConsole(). Works even on a Chromebook with no DevTools access.
+        const lines = fullSource.split('\n');
+        const numbered = lines.map((l, i) => {
+            const n = i + 1;
+            const marker = (errLine != null && n === errLine) ? ' >>> ' : '     ';
+            return `${String(n).padStart(5)}${marker}${l}`;
+        }).join('\n');
+
+        const banner = '═'.repeat(70);
+        console.error(
+            `\n${banner}\n` +
+            `ZENGINE SCRIPT COMPILE ERROR\n` +
+            `${banner}\n` +
+            `Script : "${scriptName}"\n` +
+            `Object : "${objLabel}"\n` +
+            `Error  : [${err?.name ?? 'Error'}] ${err?.message ?? err}\n` +
+            (errLine != null ? `Location: line ${errLine}, column ${errCol}\n` : `Location: not provided by the browser for this error type\n`) +
+            `${banner}\n` +
+            `FULL NUMBERED SOURCE (search for ">>> " to find the flagged line):\n` +
+            `${banner}\n` +
+            numbered +
+            `\n${banner}\n`
+        );
+
+        // Also push a compact version into the in-engine console (works on a
+        // Chromebook with no DevTools) so this is visible without F12.
+        try {
+            _logConsole(`❌ COMPILE ERROR in "${scriptName}" on "${objLabel}": ${err?.message ?? err}`, '#f87171');
+            if (errLine != null) {
+                const ctxStart = Math.max(0, errLine - 4);
+                const ctxEnd   = Math.min(lines.length, errLine + 3);
+                _logConsole(`   Near line ${errLine}, column ${errCol}:`, '#fb923c');
+                for (let i = ctxStart; i < ctxEnd; i++) {
+                    const n = i + 1;
+                    const marker = n === errLine ? '>>> ' : '    ';
+                    _logConsole(`   ${marker}${n}: ${lines[i]}`, n === errLine ? '#f87171' : '#94a3b8');
+                }
+            } else {
+                _logConsole('   (Browser did not report a line/column for this error. Full numbered source was dumped to the browser devtools console via console.error — if you cannot access devtools, the SOURCE block below has the same content.)', '#94a3b8');
+                // Chromebook-friendly fallback: dump a meaningful chunk of the
+                // user's own code (not the huge prelude) directly into the
+                // in-engine console so it's visible with zero extra tools.
+                // The user's code starts after the prelude and ends before
+                // the postlude; we approximate by showing the LAST ~40 lines
+                // of fullSource, since the prelude is fixed/static and always
+                // comes first — the tail is always the user's code + postlude.
+                const tail = lines.slice(Math.max(0, lines.length - 40));
+                _logConsole('   ── last ~40 lines of compiled source (your code is in here) ──', '#94a3b8');
+                tail.forEach((l, idx) => {
+                    const n = lines.length - tail.length + idx + 1;
+                    _logConsole(`   ${n}: ${l}`, '#94a3b8');
+                });
+            }
+        } catch (_) { /* never let logging itself break compilation error handling */ }
+
+        // Tag the error so it's identifiable wherever it's caught — including
+        // the outer try/catch in this constructor and the global
+        // unhandledrejection handler in engine.console.js.
+        err._zeSource = fullSource;
+        err._zeOrigin = 'initial script compile (_compileScriptSource)';
+        err._zeScript = scriptName;
+        err._zeObj    = objLabel;
+        err._zeLine   = errLine;
+        err._zeCol    = errCol;
+        throw err;
+    }
+}
+
 // ── Script Instance ───────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 // SMART SCRIPT SAFETY LAYER
@@ -1922,7 +2010,13 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             const fullSource = prelude + '\n' + code + '\n' + postlude;
             let fn = _scriptFnCache.get(code);
             if (!fn) {
-                fn = new AsyncFunction('api', '__out', fullSource);
+                // Wrapped in a NAMED function (_compileScriptSource) so that if
+                // the AsyncFunction constructor throws, V8 attributes a real
+                // stack frame to this call site instead of producing a bare
+                // "SyntaxError: missing ) after argument list" with zero frames
+                // (the default for errors thrown directly inside `new Function(...)`
+                // at the top level of a try block).
+                fn = _compileScriptSource(AsyncFunction, fullSource, this.name, this.obj.label);
                 _scriptFnCache.set(code, fn);
             }
             const out = {};
@@ -1996,17 +2090,26 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             const friendly = _friendlyScriptError(err, code, this.name, this.obj.label, 'compile');
             for (const line of friendly) _logConsole(line, '#f87171');
 
-            // ── DETAILED DEBUG DUMP ──────────────────────────────────────────
-            // Always log the raw error to engine console + browser devtools
-            // so you can copy/paste the full error message.
-            const _rawMsg  = err?.message ?? String(err);
-            const _rawType = err?.name    ?? 'Error';
-            const _rawStack = (err?.stack ?? '').split('\n').slice(0,5).join(' | ');
-            _logConsole(`  🔍 RAW ERROR: [${_rawType}] ${_rawMsg}`, '#fb923c');
-            _logConsole(`  📋 STACK: ${_rawStack}`, '#94a3b8');
-            _logConsole(`  📝 SCRIPT: "${this.name}" on object "${this.obj.label}"`, '#94a3b8');
-            // Also dump to browser console for full stack trace
-            console.error('[Zengine compile error]', _rawType + ':', _rawMsg, '\nScript:', this.name, '\nObject:', this.obj.label, '\nFull error:', err);
+            // If this error already went through _compileScriptSource(), it was
+            // already fully dumped (numbered source, line/column, console.error
+            // banner) — avoid printing the same thing twice. Just show a short
+            // pointer to scroll up. Otherwise (error came from somewhere else in
+            // this try block, e.g. binding handlers), do the full dump here.
+            if (err?._zeOrigin) {
+                _logConsole(`  ↑ Full compile error details logged above (script: "${err._zeScript}", object: "${err._zeObj}")`, '#94a3b8');
+            } else {
+                // ── DETAILED DEBUG DUMP ──────────────────────────────────────
+                // Always log the raw error to engine console + browser devtools
+                // so you can copy/paste the full error message.
+                const _rawMsg  = err?.message ?? String(err);
+                const _rawType = err?.name    ?? 'Error';
+                const _rawStack = (err?.stack ?? '').split('\n').slice(0,5).join(' | ');
+                _logConsole(`  🔍 RAW ERROR: [${_rawType}] ${_rawMsg}`, '#fb923c');
+                _logConsole(`  📋 STACK: ${_rawStack || '(none provided by browser)'}`, '#94a3b8');
+                _logConsole(`  📝 SCRIPT: "${this.name}" on object "${this.obj.label}"`, '#94a3b8');
+                // Also dump to browser console for full stack trace
+                console.error('[Zengine compile error]', _rawType + ':', _rawMsg, '\nScript:', this.name, '\nObject:', this.obj.label, '\nFull error:', err);
+            }
 
             import('./engine.console.js').then(m => m.recordPlayError());
         }

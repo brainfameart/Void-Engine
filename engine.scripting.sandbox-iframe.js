@@ -144,87 +144,106 @@ function _createSandboxIframe() {
  * @returns {Promise}
  */
 export function runInSandbox(fn, api, out, iframe, source) {
-    // Game-only / no-sandbox mode: run directly
-    if (!iframe || window.__ZENGINE_GAME_ONLY__) {
-        return fn.call(api, api, out);
-    }
-
-    const cw = iframe.contentWindow;
-
-    // Inject the live api + output collector into the iframe's global scope.
-    // The blob-URL iframe shares the same JS heap, so direct property assignment
-    // works without serialization — PIXI objects, callbacks, etc. pass by reference.
-    cw.__api__ = api;
-    cw.__out__ = out;
-    cw.__fn__  = fn;
-
-    // CRITICAL: We must COMPILE and CALL the function inside the iframe's own
-    // AsyncFunction constructor — not the parent's.  A function compiled with
-    // the parent's `new AsyncFunction(...)` captures the parent's global scope,
-    // meaning `document`, `window`, `localStorage` etc. inside user code would
-    // resolve to the PARENT page's globals, bypassing the sandbox entirely.
-    //
-    // By using the iframe's own AsyncFunction constructor (cw.AsyncFunction),
-    // the function is compiled inside the sandboxed context where:
-    //   ✗  document / window.document  → SecurityError or undefined
-    //   ✗  localStorage / sessionStorage → SecurityError
-    //   ✗  location.href = ...          → blocked
-    //   ✗  alert() / prompt()           → blocked
-    //   ✅ api.*                         → works (injected via cw.__api__)
-    //
-    // The iframe's AsyncFunction is retrieved via the same heap-access trick.
-    //
-    // IMPORTANT: we re-compile from the ORIGINAL source string (prelude + code +
-    // postlude), passed in as `source` — NOT from fn.toString() sliced between
-    // the first "{" and last "}". That string-slicing approach broke the instant
-    // user code contained an object literal (the first "{" in the whole source
-    // could be inside the prelude, not the function's opening brace) or a
-    // template literal with "${...}" (the last "}" could land mid-expression).
-    // Either case fed a truncated, unbalanced body into the iframe's
-    // AsyncFunction constructor, producing a generic, contextless
-    // "missing ) after argument list" SyntaxError with no script name attached.
+    // Wrap the ENTIRE function body in try/catch and always return a Promise
+    // (never throw synchronously) — this guarantees that ANY caller doing
+    // `runInSandbox(...).catch(...)` will have its .catch() actually fire,
+    // no matter what goes wrong inside. A bare `throw` from a non-async
+    // function called as `fn(...).catch()` throws synchronously OUT of the
+    // call expression itself, which skips .catch() entirely and instead
+    // propagates to whatever try/catch (if any) wraps the call site — which
+    // is a much easier way to end up with a contextless unhandled rejection
+    // than it looks.
     try {
-        const iframeAsyncFn = Object.getPrototypeOf(
-            cw.eval('(async function(){})')
-        ).constructor;
-
-        const iframeFn = new iframeAsyncFn('api', '__out', source);
-        return iframeFn.call(cw.__api__, cw.__api__, cw.__out__);
-    } catch (secErr) {
-        // ── Diagnose WHY the iframe recompile failed ────────────────────────
-        // This used to be swallowed into a bare console.warn with no source
-        // context, then silently fall back to running `fn` directly — which
-        // can ALSO fail (or behave differently, since it's now running
-        // outside the sandbox) for reasons unrelated to secErr, producing a
-        // second, even less informative unhandled rejection downstream.
-        // Log everything here, at the point we actually have the real error
-        // and the real source string, so a SyntaxError is debuggable instead
-        // of bottoming out as a bare "missing ) after argument list".
-        const isSyntaxError = secErr instanceof SyntaxError
-            || /SyntaxError/i.test(secErr?.name ?? '')
-            || /missing \)|missing }|unexpected token|unexpected end of/i.test(secErr?.message ?? '');
-        console.error(
-            '[Zengine] iframe re-compile failed.\n' +
-            `  Error: [${secErr?.name ?? typeof secErr}] ${secErr?.message ?? secErr}\n` +
-            `  Likely cause: ${isSyntaxError ? 'a real syntax error in the compiled source (see source dump below)' : 'iframe eval blocked (sandbox/CSP) — falling back to direct execution, this is usually fine'}\n` +
-            '  ── full source that failed to compile ──\n' + source
-        );
-        if (isSyntaxError) {
-            // Re-throw so this surfaces as a real, attributable error instead
-            // of silently falling back to a possibly-broken direct run. The
-            // caller's .catch() (see ScriptInstance constructor) already
-            // knows the script name/object label and will report it properly
-            // via _friendlyScriptError + the RAW ERROR / STACK / SCRIPT dump.
-            const wrapped = new SyntaxError(
-                `Script failed to compile inside the sandbox iframe: ${secErr.message}`
-            );
-            wrapped._zeSource = source;
-            wrapped._zeOrigin = 'sandbox iframe recompile (runInSandbox)';
-            throw wrapped;
+        // Game-only / no-sandbox mode: run directly
+        if (!iframe || window.__ZENGINE_GAME_ONLY__) {
+            return Promise.resolve(fn.call(api, api, out));
         }
-        // Not a syntax error (e.g. iframe eval genuinely blocked by CSP) —
-        // safe to fall back to direct execution outside the sandbox.
-        return fn.call(api, api, out);
+
+        const cw = iframe.contentWindow;
+
+        // Inject the live api + output collector into the iframe's global scope.
+        // The blob-URL iframe shares the same JS heap, so direct property assignment
+        // works without serialization — PIXI objects, callbacks, etc. pass by reference.
+        cw.__api__ = api;
+        cw.__out__ = out;
+        cw.__fn__  = fn;
+
+        // CRITICAL: We must COMPILE and CALL the function inside the iframe's own
+        // AsyncFunction constructor — not the parent's.  A function compiled with
+        // the parent's `new AsyncFunction(...)` captures the parent's global scope,
+        // meaning `document`, `window`, `localStorage` etc. inside user code would
+        // resolve to the PARENT page's globals, bypassing the sandbox entirely.
+        //
+        // By using the iframe's own AsyncFunction constructor (cw.AsyncFunction),
+        // the function is compiled inside the sandboxed context where:
+        //   ✗  document / window.document  → SecurityError or undefined
+        //   ✗  localStorage / sessionStorage → SecurityError
+        //   ✗  location.href = ...          → blocked
+        //   ✗  alert() / prompt()           → blocked
+        //   ✅ api.*                         → works (injected via cw.__api__)
+        //
+        // The iframe's AsyncFunction is retrieved via the same heap-access trick.
+        //
+        // IMPORTANT: we re-compile from the ORIGINAL source string (prelude + code +
+        // postlude), passed in as `source` — NOT from fn.toString() sliced between
+        // the first "{" and last "}". That string-slicing approach broke the instant
+        // user code contained an object literal (the first "{" in the whole source
+        // could be inside the prelude, not the function's opening brace) or a
+        // template literal with "${...}" (the last "}" could land mid-expression).
+        // Either case fed a truncated, unbalanced body into the iframe's
+        // AsyncFunction constructor, producing a generic, contextless
+        // "missing ) after argument list" SyntaxError with no script name attached.
+        try {
+            const iframeAsyncFn = Object.getPrototypeOf(
+                cw.eval('(async function(){})')
+            ).constructor;
+
+            const iframeFn = new iframeAsyncFn('api', '__out', source);
+            return Promise.resolve(iframeFn.call(cw.__api__, cw.__api__, cw.__out__));
+        } catch (secErr) {
+            // ── Diagnose WHY the iframe recompile failed ────────────────────
+            // This used to be swallowed into a bare console.warn with no source
+            // context, then silently fall back to running `fn` directly — which
+            // can ALSO fail (or behave differently, since it's now running
+            // outside the sandbox) for reasons unrelated to secErr, producing a
+            // second, even less informative unhandled rejection downstream.
+            // Log everything here, at the point we actually have the real error
+            // and the real source string, so a SyntaxError is debuggable instead
+            // of bottoming out as a bare "missing ) after argument list".
+            const isSyntaxError = secErr instanceof SyntaxError
+                || /SyntaxError/i.test(secErr?.name ?? '')
+                || /missing \)|missing }|unexpected token|unexpected end of/i.test(secErr?.message ?? '');
+            console.error(
+                '[Zengine] iframe re-compile failed.\n' +
+                `  Error: [${secErr?.name ?? typeof secErr}] ${secErr?.message ?? secErr}\n` +
+                `  Likely cause: ${isSyntaxError ? 'a real syntax error in the compiled source (see source dump below)' : 'iframe eval blocked (sandbox/CSP) — falling back to direct execution, this is usually fine'}\n` +
+                '  ── full source that failed to compile ──\n' + source
+            );
+            if (isSyntaxError) {
+                // Return a REJECTED PROMISE (never throw synchronously here) so
+                // the caller's .catch() — which already knows the script name/
+                // object label and reports it via _friendlyScriptError + the
+                // RAW ERROR / STACK / SCRIPT dump — is guaranteed to fire.
+                const wrapped = new SyntaxError(
+                    `Script failed to compile inside the sandbox iframe: ${secErr.message}`
+                );
+                wrapped._zeSource = source;
+                wrapped._zeOrigin = 'sandbox iframe recompile (runInSandbox)';
+                return Promise.reject(wrapped);
+            }
+            // Not a syntax error (e.g. iframe eval genuinely blocked by CSP) —
+            // safe to fall back to direct execution outside the sandbox.
+            return Promise.resolve(fn.call(api, api, out));
+        }
+    } catch (outerErr) {
+        // Absolute last resort — something we didn't anticipate threw
+        // synchronously somewhere in this function. Tag and dump it so it's
+        // never a bare, contextless message again, then return as a rejected
+        // promise so .catch() at the call site still fires normally.
+        console.error('[Zengine] runInSandbox: unexpected synchronous failure:', outerErr);
+        outerErr._zeSource = outerErr._zeSource ?? source;
+        outerErr._zeOrigin = outerErr._zeOrigin ?? 'runInSandbox (outer guard)';
+        return Promise.reject(outerErr);
     }
 }
 
