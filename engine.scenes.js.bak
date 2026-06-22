@@ -9,7 +9,6 @@ import { markDirty } from './engine.persist.js';
 import { state } from './engine.state.js';
 import { drawGrid } from './engine.renderer.js';
 import { syncPixiToInspector, refreshHierarchy, refreshAssetPanel } from './engine.ui.js';
-import { _clearTimers } from './engine.scripting.shared.js';
 
 // ── Scene registry (lives in state.scenes) ────────────────────
 // state.scenes  = [ { id, name, snapshot: {...} }, ... ]
@@ -110,12 +109,6 @@ export function playModeGotoScene(index, onReady = null) {
     // This prevents double-restarts and clone-interruption glitches.
     if (_sceneTransitioning) return;
     _sceneTransitioning = true;
-
-    // Kill all pending wait() timers immediately and synchronously so they
-    // cannot fire into the new scene mid-transition. This must happen before
-    // any async work so a wait(2, restartScene) callback from a prior
-    // collision cannot trigger a second restart while this one is in flight.
-    _clearTimers();
 
     const target = state.scenes[index];
     if (!target) { _sceneTransitioning = false; return; }
@@ -325,22 +318,12 @@ export function playModeGotoScene(index, onReady = null) {
 export function playModeRestartScene(onReady = null) {
     if (_sceneTransitioning) return;
 
-    // Kill all pending wait() timers immediately and synchronously so they
-    // cannot fire into the restarted scene mid-transition.
-    _clearTimers();
-
     const currentIdx = state.activeSceneIndex;
     const isSameScene = (currentIdx === (state._playSnapshot?.originSceneIndex ?? currentIdx));
     const snap = state.scenes[currentIdx]?.snapshot ?? (isSameScene ? state._playSnapshot : null);
 
     // If there are runtime-spawned objects or no usable snapshot, fall back to full rebuild.
-    // Exclude runtime text overlay nodes (label starts with _rt_text_) — those are
-    // created by drawText() every play session and are not part of the scene snapshot.
-    // Including them would force a full rebuild on every restart unnecessarily.
-    const hasRuntimeObjs = state.gameObjects.some(o =>
-        o._runtimeSpawned && !o._ddol &&
-        !(typeof o.label === 'string' && o.label.startsWith('_rt_text_'))
-    );
+    const hasRuntimeObjs = state.gameObjects.some(o => o._runtimeSpawned && !o._ddol);
     if (!snap?.objects?.length || hasRuntimeObjs) {
         playModeGotoScene(currentIdx, onReady);
         return;
@@ -364,11 +347,6 @@ export function playModeRestartScene(onReady = null) {
 
         const toDestroy = [];
         for (const obj of normalObjects) {
-            // Always destroy runtime drawText overlay nodes — scripts recreate them fresh
-            if (obj._runtimeSpawned && typeof obj.label === 'string' && obj.label.startsWith('_rt_text_')) {
-                toDestroy.push(obj);
-                continue;
-            }
             if (obj._runtimeSpawned) { toDestroy.push(obj); continue; }
             const s = snapByLabel.get(obj.label);
             if (!s) continue;
