@@ -9,6 +9,7 @@ import { markDirty } from './engine.persist.js';
 import { state } from './engine.state.js';
 import { drawGrid } from './engine.renderer.js';
 import { syncPixiToInspector, refreshHierarchy, refreshAssetPanel } from './engine.ui.js';
+import { _clearTimers } from './engine.scripting.shared.js';
 
 // ── Scene registry (lives in state.scenes) ────────────────────
 // state.scenes  = [ { id, name, snapshot: {...} }, ... ]
@@ -105,6 +106,12 @@ export function playModeGotoScene(index, onReady = null) {
         );
         return;
     }
+    // ── Kill all pending wait() timers BEFORE the guard check ──────────────
+    // This must happen synchronously so any in-flight restartScene/gotoScene
+    // wait() callbacks can never fire a second transition while one is already
+    // in progress.  _clearTimers() is cheap (array truncation) and idempotent.
+    _clearTimers();
+
     // Guard: if a scene transition is already in flight, ignore duplicates.
     // This prevents double-restarts and clone-interruption glitches.
     if (_sceneTransitioning) return;
@@ -316,20 +323,42 @@ export function playModeGotoScene(index, onReady = null) {
 // Performance: O(n) property writes vs O(n) destroy + async re-create.
 // On a 200-object scene this is typically 10-30× faster.
 export function playModeRestartScene(onReady = null) {
+    // ── Kill all pending wait() timers SYNCHRONOUSLY ───────────────────────
+    // Must happen before the guard check — this is the primary fix for the
+    // double-restart bug.  If wait(2, restartScene) fires while a transition
+    // is already running, it would corrupt engine state.  Clearing timers
+    // here prevents the second callback from ever running.
+    _clearTimers();
+
     if (_sceneTransitioning) return;
 
     const currentIdx = state.activeSceneIndex;
     const isSameScene = (currentIdx === (state._playSnapshot?.originSceneIndex ?? currentIdx));
     const snap = state.scenes[currentIdx]?.snapshot ?? (isSameScene ? state._playSnapshot : null);
 
-    // If there are runtime-spawned objects or no usable snapshot, fall back to full rebuild.
-    const hasRuntimeObjs = state.gameObjects.some(o => o._runtimeSpawned && !o._ddol);
+    // If there are runtime-spawned objects (excluding _rt_text_ overlay nodes,
+    // which are always runtime-spawned but are safe to destroy+recreate in the
+    // fast path) or no usable snapshot, fall back to full rebuild.
+    // _rt_text_* nodes are cleaned up below during the fast-path reset.
+    const hasRuntimeObjs = state.gameObjects.some(
+        o => o._runtimeSpawned && !o._ddol && !(o.label?.startsWith('_rt_text_'))
+    );
     if (!snap?.objects?.length || hasRuntimeObjs) {
         playModeGotoScene(currentIdx, onReady);
         return;
     }
 
     _sceneTransitioning = true;
+
+    // Separate out _rt_text_ overlay nodes — destroy them now so drawText
+    // recreates them cleanly on the next frame.  They must NOT be matched
+    // against snap.objects (they were runtime-created, not in the snapshot).
+    const rtTextObjects = state.gameObjects.filter(o => o.label?.startsWith('_rt_text_'));
+    for (const obj of rtTextObjects) {
+        state.sceneContainer?.removeChild(obj);
+        try { obj.destroy({ children: true }); } catch(_) {}
+    }
+    state.gameObjects = state.gameObjects.filter(o => !rtTextObjects.includes(o));
 
     const ddolObjects  = state.gameObjects.filter(o => o._ddol === true);
     const normalObjects = state.gameObjects.filter(o => !o._ddol);
