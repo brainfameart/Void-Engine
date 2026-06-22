@@ -336,6 +336,25 @@ export function playModeRestartScene(onReady = null) {
     const isSameScene = (currentIdx === (state._playSnapshot?.originSceneIndex ?? currentIdx));
     const snap = state.scenes[currentIdx]?.snapshot ?? (isSameScene ? state._playSnapshot : null);
 
+    // ── Flush any pending destroy() calls synchronously ───────────────────
+    // api.destroy(other) only sets _markedForDestroy = true; actual removal
+    // happens on the next ticker tick.  If restartScene() fires before that
+    // tick (e.g. wait(0.1) → destroy → wait(2) → restart), the object is
+    // still in state.gameObjects.  The fast-path reset would re-apply its
+    // snapshot transform, and the following tick would then delete it —
+    // leaving the restarted scene missing that object permanently.
+    // Physics body removal happens inside stopPhysics() moments later, so
+    // we only need to strip the PIXI node and gameObjects entry here.
+    for (const obj of state.gameObjects.slice()) {
+        if (obj._markedForDestroy && !obj._ddol) {
+            obj.visible = false;
+            try { state.sceneContainer?.removeChild(obj); } catch(_) {}
+            const idx = state.gameObjects.indexOf(obj);
+            if (idx !== -1) state.gameObjects.splice(idx, 1);
+            obj._markedForDestroy = false;
+        }
+    }
+
     // If there are runtime-spawned objects (excluding _rt_text_ overlay nodes,
     // which are always runtime-spawned but are safe to destroy+recreate in the
     // fast path) or no usable snapshot, fall back to full rebuild.
