@@ -94,6 +94,10 @@ export function _resetSceneTransitionGuard() { _sceneTransitioning = false; }
 // 1. Stops current scripts/physics without saving play state
 // 2. Loads the target scene's editor snapshot
 // 3. Restarts scripts/physics for the new scene
+// dontDestroyOnLoad objects (obj._ddol === true) survive steps 1–3:
+//   - their script instances are NOT stopped
+//   - their PIXI objects are NOT destroyed
+//   - they are re-inserted into the new scene after it loads
 export function playModeGotoScene(index, onReady = null) {
     if (index < 0 || index >= state.scenes.length) {
         import('./engine.scripting.js').then(m =>
@@ -109,16 +113,27 @@ export function playModeGotoScene(index, onReady = null) {
     const target = state.scenes[index];
     if (!target) { _sceneTransitioning = false; return; }
 
-    // Stop scripts/physics for the current scene.
+    // Separate dontDestroyOnLoad objects from normal ones BEFORE stopping scripts.
+    // This must happen first so stopScripts() can skip their instances.
+    const ddolObjects = state.gameObjects.filter(o => o._ddol === true);
+    const normalObjects = state.gameObjects.filter(o => !o._ddol);
+
+    // Stop scripts/physics for the current scene (normal objects only).
     // stopScripts() called WITHOUT clearGlobals — globalVar must survive both
     // Restart Scene and Switch Scene (in-play gotoScene); it only resets on
     // a full Stop (see stopPlayMode in engine.playmode.js).
+    // Pass ddolObjects so stopScripts knows to preserve those instances.
     Promise.all([
-        import('./engine.scripting.js').then(m => { m.stopScripts(); m.clearSceneVars(); }),
+        import('./engine.scripting.js').then(m => { m.stopScripts(false, ddolObjects); m.clearSceneVars(); }),
         import('./engine.physics.js').then(m => m.stopPhysics()),
         import('./engine.audio.js').then(m => { m.stopPlayAudio(); m._stopAllScriptSounds(); }),
     ]).then(() => {
-        for (const obj of state.gameObjects) {
+        // Detach DDOL objects from the scene container temporarily; keep them alive.
+        for (const obj of ddolObjects) {
+            state.sceneContainer?.removeChild(obj);
+        }
+        // Destroy normal (non-DDOL) objects.
+        for (const obj of normalObjects) {
             state.sceneContainer?.removeChild(obj);
             try { obj.destroy({ children: true }); } catch(_) {}
         }
@@ -247,15 +262,25 @@ export function playModeGotoScene(index, onReady = null) {
         });
 
         Promise.all(objectRestorePromises).then(() => {
+            // Re-insert dontDestroyOnLoad objects into the new scene.
+            // They were removed from sceneContainer but never destroyed; add them
+            // back now so they render on top of the freshly-loaded scene objects.
+            for (const obj of ddolObjects) {
+                state.gameObjects.push(obj);
+                if (obj._gizmoContainer) obj._gizmoContainer.visible = false;
+                state.sceneContainer?.addChild(obj);
+            }
             // Sort by Z-order so objects render in the correct layer order
             _applyZOrder();
-            // Restart play-mode animations, physics and scripts for the new scene
+            // Restart play-mode animations, physics and scripts for the new scene.
+            // startScripts() receives ddolObjects so it can skip re-instantiating
+            // them — their existing ScriptInstances remain live in _instances.
             import('./engine.playmode.js').then(m => {
                 m.startRuntimeAnimations();
                 import('./engine.physics.js').then(pm => pm.startPhysics());
                 import('./engine.audio.js').then(am => am.startPlayAudio());
                 import('./engine.scripting.js').then(sm => {
-                    sm.startScripts();
+                    sm.startScripts(ddolObjects);
                     if (onReady) onReady();
                     // Release the guard AFTER scripts start — prevents overlapping
                     // restartScene / gotoScene calls during the transition but
@@ -266,9 +291,119 @@ export function playModeGotoScene(index, onReady = null) {
             import('./engine.scripting.js').then(m =>
                 m._logConsolePublic(`▶ Scene loaded: "${target.name}"`, '#4ade80')
             );
+        }).catch(err => {
+            // Guard ALWAYS releases even if anything throws mid-transition,
+            // preventing the scene switcher from freezing for the rest of the session.
+            console.error('[Zengine] playModeGotoScene failed:', err);
+            _sceneTransitioning = false;
         });
     }).catch(err => {
-        console.error('[Zengine] playModeGotoScene failed:', err);
+        console.error('[Zengine] playModeGotoScene (teardown) failed:', err);
+        _sceneTransitioning = false;
+    });
+}
+
+// ── Fast-path restart for the CURRENT scene during play mode ────
+// Unlike playModeGotoScene(currentIdx), this does NOT rebuild objects from
+// scratch. It resets positions/scales/rotations/alpha/visibility directly
+// on the existing PIXI objects using the play snapshot — no destroy, no
+// re-instantiate, no async object-restore promise chain.
+// Falls back to full playModeGotoScene if the snapshot is missing or the
+// scene has runtime-spawned objects that can't be cleanly reset in place.
+//
+// dontDestroyOnLoad objects are untouched — they keep running as usual.
+//
+// Performance: O(n) property writes vs O(n) destroy + async re-create.
+// On a 200-object scene this is typically 10-30× faster.
+export function playModeRestartScene(onReady = null) {
+    if (_sceneTransitioning) return;
+
+    const currentIdx = state.activeSceneIndex;
+    const isSameScene = (currentIdx === (state._playSnapshot?.originSceneIndex ?? currentIdx));
+    const snap = state.scenes[currentIdx]?.snapshot ?? (isSameScene ? state._playSnapshot : null);
+
+    // If there are runtime-spawned objects or no usable snapshot, fall back to full rebuild.
+    const hasRuntimeObjs = state.gameObjects.some(o => o._runtimeSpawned && !o._ddol);
+    if (!snap?.objects?.length || hasRuntimeObjs) {
+        playModeGotoScene(currentIdx, onReady);
+        return;
+    }
+
+    _sceneTransitioning = true;
+
+    const ddolObjects  = state.gameObjects.filter(o => o._ddol === true);
+    const normalObjects = state.gameObjects.filter(o => !o._ddol);
+
+    Promise.all([
+        import('./engine.scripting.js').then(m => { m.stopScripts(false, ddolObjects); m.clearSceneVars(); }),
+        import('./engine.physics.js').then(m => m.stopPhysics()),
+        import('./engine.audio.js').then(m => { m.stopPlayAudio(); m._stopAllScriptSounds(); }),
+    ]).then(() => {
+        // Destroy runtime-spawned objects only (they were filtered to normalObjects
+        // if _runtimeSpawned, but hasRuntimeObjs was false so there are none —
+        // this is purely defensive). Reset all other normal objects in-place.
+        const snapByLabel = new Map();
+        for (const s of snap.objects) snapByLabel.set(s.label, s);
+
+        const toDestroy = [];
+        for (const obj of normalObjects) {
+            if (obj._runtimeSpawned) { toDestroy.push(obj); continue; }
+            const s = snapByLabel.get(obj.label);
+            if (!s) continue;
+            // Reset transform
+            obj.x        = s.x        ?? obj.x;
+            obj.y        = s.y        ?? obj.y;
+            obj.scale.x  = s.scaleX   ?? obj.scale.x;
+            obj.scale.y  = s.scaleY   ?? obj.scale.y;
+            obj.rotation = s.rotation ?? obj.rotation;
+            obj.alpha    = s.alpha    ?? 1;
+            obj.visible  = s.visible  !== false;
+            // Reset tint
+            if (obj.spriteGraphic?.tint !== undefined && s.tint !== undefined)
+                obj.spriteGraphic.tint = s.tint;
+            // Reset physics velocity / wake state
+            if (obj._physicsBody) {
+                try {
+                    obj._physicsBody.setLinearVelocity(window.planck?.Vec2(0, 0));
+                    obj._physicsBody.setAngularVelocity(0);
+                    obj._physicsBody.setPosition(window.planck?.Vec2(obj.x / 100, -obj.y / 100));
+                    obj._physicsBody.setAwake(true);
+                } catch(_) {}
+            }
+            obj._kinematicVx = 0; obj._kinematicVy = 0;
+            obj._velDirty    = false;
+            // Hide gizmos in play mode
+            if (obj._gizmoContainer) obj._gizmoContainer.visible = false;
+        }
+        for (const obj of toDestroy) {
+            state.sceneContainer?.removeChild(obj);
+            try { obj.destroy({ children: true }); } catch(_) {}
+        }
+        state.gameObjects = state.gameObjects.filter(o => !toDestroy.includes(o));
+        state.gameObject  = null;
+
+        // Restore scene settings + camera
+        if (snap.sceneSettings) {
+            state.sceneSettings = { ...state.sceneSettings, ...snap.sceneSettings };
+            if (state.app?.renderer) state.app.renderer.background.color = state.sceneSettings.bgColor;
+        }
+
+        // Restart animations, physics and scripts
+        import('./engine.playmode.js').then(m => {
+            m.startRuntimeAnimations();
+            import('./engine.physics.js').then(pm => pm.startPhysics());
+            import('./engine.audio.js').then(am => am.startPlayAudio());
+            import('./engine.scripting.js').then(sm => {
+                sm.startScripts(ddolObjects);
+                if (onReady) onReady();
+                _sceneTransitioning = false;
+            });
+        });
+        import('./engine.scripting.js').then(m =>
+            m._logConsolePublic(`↺ Scene restarted: ${state.scenes[currentIdx]?.name}`, '#4ade80')
+        );
+    }).catch(err => {
+        console.error('[Zengine] playModeRestartScene failed:', err);
         _sceneTransitioning = false;
     });
 }

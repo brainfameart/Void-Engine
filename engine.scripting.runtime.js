@@ -125,7 +125,14 @@ class ScriptInstance {
         this._keyUpHandlers   = _keyUpHandlers;
         // Sandbox iframe — acquired async, compile runs once it's ready
         this._sandboxIframe = null;
-        this._compileAsync(code, api);
+        // _pendingStart: set to true by startScripts() when onStart() should fire
+        // after _doCompile finishes. Guards against the race where start() is called
+        // before _compileAsync has bound the user callbacks (_onStart etc).
+        this._pendingStart = false;
+        // _compilePromise resolves once _doCompile finishes (iframe acquired + prelude run).
+        // startScripts() awaits ALL instances's promises before firing any onStart,
+        // guaranteeing that findWithTag / sendMessage in onStart always finds peers.
+        this._compilePromise = this._compileAsync(code, api);
     }
 
     async _compileAsync(code, api) {
@@ -557,6 +564,21 @@ function resumeScene()              { api.pauseScene(false); }
  * All objects, physics and scripts are reset to their initial state.
  */
 function restartScene()             { api.restartScene(); }
+
+/**
+ * Mark this object to survive Restart Scene and Switch Scene.
+ * The object and its entire script state (local variables, timers,
+ * repeat() loops, tweens) keep running uninterrupted.
+ * onStart() does NOT re-fire — it only ever runs once.
+ * The object is destroyed normally when Play is fully stopped.
+ * Call from onStart() only.
+ *
+ * Example:
+ *   onStart(() => {
+ *     dontDestroyOnLoad();   // this object survives all scene switches
+ *   });
+ */
+function dontDestroyOnLoad()        { api.dontDestroyOnLoad(); }
 
 // ── Camera ────────────────────────────────────────────────────
 /**
@@ -2012,6 +2034,15 @@ __out._syncVel           = typeof _syncVelocityToApi !== 'undefined' ? _syncVelo
             const spawnVy = this.obj._spawnVy;
             api._vel.x = (spawnVx != null && spawnVx !== 0) ? spawnVx : (out._initVX ?? 0);
             api._vel.y = (spawnVy != null && spawnVy !== 0) ? spawnVy : (out._initVY ?? 0);
+            // _pendingStart is set by startScripts() for batch scene-load instances.
+            // For those, start() is fired from the Promise.all in startScripts() AFTER
+            // all instances finish compiling — guaranteeing onStart ordering.
+            // For spawn/clone instances it is also set; their start() fires here
+            // because they are not part of the batch and have no ordering requirement.
+            if (this._pendingStart && !this._batchStart) {
+                this._pendingStart = false;
+                this.start();
+            }
         } catch (err) {
             const friendly = _friendlyScriptError(err, code, this.name, this.obj.label, 'compile');
             for (const line of friendly) _logConsole(line, '#f87171');
@@ -3144,14 +3175,31 @@ function _runCollisionStayChecks() {
     }
 }
 
-// ── Start scripts (enterPlayMode) ─────────────────────────────
-export function startScripts() {
-    stopScripts();
+// ── Start scripts (enterPlayMode / scene transition) ──────────
+// ddolObjects: objects that survived a scene transition via dontDestroyOnLoad().
+//   Their ScriptInstances already exist in _instances — don't re-create them,
+//   don't call onStart() on them again. Do re-register them in the tag/group
+//   registries (which were rebuilt by the preceding stopScripts call).
+export function startScripts(ddolObjects = []) {
+    const isDdolRestart = ddolObjects.length > 0;
+    if (!isDdolRestart) {
+        // Full play-start: wipe everything cleanly.
+        stopScripts();
+    }
     _clearRegistries();
     _camera._followTarget = null;
 
+    const ddolSet = new Set(ddolObjects);
+
+    // Re-register surviving DDOL instances in the fresh registries.
+    for (const i of _instances) {
+        if (ddolSet.has(i.obj)) _registerInstance(i);
+    }
+
     let count = 0;
     for (const obj of state.gameObjects) {
+        // Skip DDOL objects — their ScriptInstance already exists and is live.
+        if (ddolSet.has(obj)) { count++; continue; }
         if (!obj.scriptName) continue;
         const rec = getScript(obj.scriptName);
         if (!rec) {
@@ -3161,14 +3209,31 @@ export function startScripts() {
         const inst = new ScriptInstance(obj, obj.scriptName, rec.code);
         _instances.push(inst);
         _registerInstance(inst);
+        // _batchStart = true: this instance is part of a scene-load batch.
+        // _doCompile will NOT fire start() on its own — startScripts fires all
+        // onStart calls together once every instance in the batch has compiled.
+        // This matches Unity's Awake→Start ordering guarantee:
+        //   all scripts finish their "setup" pass before any onStart runs,
+        //   so findWithTag / sendMessage / findAllWithTag always find peers.
+        inst._batchStart   = true;
+        inst._pendingStart = true;
         count++;
     }
 
     if (count === 0) return;
 
-    // Fire onStart for all instances after all are registered
-    // (so messaging and findWithTag work in onStart)
-    for (const i of _instances) i.start();
+    // Collect every new (non-DDOL) instance's compile promise, then fire ALL
+    // onStart calls together once the slowest compile finishes.
+    const newInsts = _instances.filter(i => i._batchStart && i._pendingStart);
+    Promise.all(newInsts.map(i => i._compilePromise)).then(() => {
+        for (const i of newInsts) {
+            if (i._pendingStart) {          // guard: skip if already stopped/destroyed
+                i._pendingStart = false;
+                i._batchStart   = false;
+                i.start();
+            }
+        }
+    });
 
     window.addEventListener('keydown',   _kd);
     window.addEventListener('keyup',     _ku);
@@ -3251,14 +3316,40 @@ export function unfreezeScripts()      { _scriptsFrozenDuringTransition = false;
 // Restart Scene and Switch Scene (during play) call this WITHOUT clearGlobals
 // so globalVar survives — it's meant to persist across scenes/restarts within
 // the same play session, and only reset when Play actually stops.
-export function stopScripts(clearGlobals = false) {
+// stopScripts(clearGlobals, ddolObjects)
+// ddolObjects: array of objects marked dontDestroyOnLoad — their ScriptInstances
+//   are preserved in _instances rather than stopped and discarded.
+//   Pass [] or omit when doing a full stop (stopPlayMode).
+export function stopScripts(clearGlobals = false, ddolObjects = []) {
     _scriptsFrozenDuringTransition = false; // always unfreeze on stop
-    for (const i of _instances) i.stop();
-    _instances.length = 0;
+    const ddolSet = ddolObjects.length > 0 ? new Set(ddolObjects) : null;
+    for (const i of _instances) {
+        // Skip stopping DDOL instances — they stay alive across scene transitions.
+        if (ddolSet && ddolSet.has(i.obj)) continue;
+        i.stop();
+    }
+    // Remove non-DDOL instances; keep DDOL ones in place.
+    if (ddolSet) {
+        for (let k = _instances.length - 1; k >= 0; k--) {
+            if (!ddolSet.has(_instances[k].obj)) _instances.splice(k, 1);
+        }
+    } else {
+        _instances.length = 0;
+    }
+    // Rebuild tag/group registries — DDOL instances re-register themselves.
     _clearRegistries();
+    if (ddolSet) {
+        import('./engine.scripting.shared.js').then(m => {
+            for (const i of _instances) m._registerInstance(i);
+        });
+    }
     _camera._followTarget = null;
     clearSceneVars();
-    if (clearGlobals) clearGlobalVars(); // only reset between play SESSIONS, not scene switches/restarts
+    if (clearGlobals) {
+        clearGlobalVars(); // only reset between play SESSIONS, not scene switches/restarts
+        // On a full stop, also clear DDOL flags so objects don't confuse the next play.
+        for (const obj of state.gameObjects) { obj._ddol = false; }
+    }
     _clearTimers();
     _clearDebugGfx();
     if (window._zeGizmos) window._zeGizmos.collision = false; // reset collision gizmo between sessions

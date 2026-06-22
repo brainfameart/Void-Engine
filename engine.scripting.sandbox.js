@@ -669,11 +669,41 @@ function _buildSandbox(obj, instRef) {
          */
         restartScene() {
             if (!state.isPlaying) return;
-            const currentIdx = state.activeSceneIndex;
-            _logConsole(`↺ Scene restarted: "${state.scenes[currentIdx]?.name}"`, '#4ade80');
-            // playModeGotoScene automatically falls back to _playSnapshot when
-            // the target scene has no saved snapshot (unsaved fresh scene).
-            import('./engine.scenes.js').then(sm => sm.playModeGotoScene(currentIdx));
+            // Use the fast-path restart which resets objects in-place rather than
+            // destroying and rebuilding the full scene. Falls back to full rebuild
+            // automatically if runtime-spawned objects exist or snapshot is missing.
+            import('./engine.scenes.js').then(sm => sm.playModeRestartScene());
+        },
+
+        // ── DONT-DESTROY-ON-LOAD ─────────────────────────────
+        /**
+         * Mark this object (and its running script — local variables, timers,
+         * tweens, repeat() loops, everything) to survive Restart Scene and
+         * Switch Scene instead of being destroyed and rebuilt.
+         *
+         * Matches Unity's DontDestroyOnLoad / Godot's Autoload pattern.
+         * Great for music managers, score trackers, game-state controllers, etc.
+         *
+         * Rules:
+         *   - Call from onStart() (or onCloneStart()) only.
+         *   - The object persists across gotoScene() and restartScene() calls.
+         *   - It is cleaned up normally when Play is fully stopped (■ Stop).
+         *   - onStart() does NOT re-fire on the surviving object — its script
+         *     just keeps running uninterrupted, exactly as if no transition happened.
+         *   - Only objects with a script can be marked; calling dontDestroyOnLoad()
+         *     on a script-less object is silently ignored.
+         *
+         * Example:
+         *   onStart(() => {
+         *     dontDestroyOnLoad();   // this object + script survive all scene switches
+         *     let score = 0;
+         *     onMessage('addScore', pts => { score += pts; });
+         *   });
+         */
+        dontDestroyOnLoad() {
+            if (!state.isPlaying) return;
+            _obj._ddol = true;
+            _logConsole(`[dontDestroyOnLoad] "${_obj.label}" will survive scene transitions.`, '#86efac');
         },
 
         // ── CAMERA ───────────────────────────────────────────
@@ -1367,7 +1397,9 @@ function _buildSandbox(obj, instRef) {
                         try {
                             const inst = _newScriptInstance(newObj, newObj.scriptName, rec.code);
                             _instances.push(inst);
-                            inst.start();
+                            // _pendingStart defers onStart/onCloneStart until _doCompile
+                            // finishes binding callbacks — fixes async compile race.
+                            inst._pendingStart = true;
                         } catch(e) {
                             const friendly = _friendlyScriptError(e, null, newObj.scriptName, newObj.label, 'spawn-start');
                             for (const line of friendly) _logConsole(line, '#f87171');
@@ -1443,7 +1475,9 @@ function _buildSandbox(obj, instRef) {
                         try {
                             const inst = _newScriptInstance(newObj, newObj.scriptName, rec.code);
                             _instances.push(inst);
-                            inst.start();
+                            // _pendingStart defers onStart/onCloneStart until _doCompile
+                            // finishes binding callbacks — fixes async compile race.
+                            inst._pendingStart = true;
                         } catch(e) {
                             const friendly = _friendlyScriptError(e, null, newObj.scriptName, newObj.label, 'cloneSelf-start');
                             for (const line of friendly) _logConsole(line, '#f87171');
@@ -1517,7 +1551,9 @@ function _buildSandbox(obj, instRef) {
                         try {
                             const inst = _newScriptInstance(newObj, newObj.scriptName, rec.code);
                             _instances.push(inst);
-                            inst.start();
+                            // _pendingStart defers onStart/onCloneStart until _doCompile
+                            // finishes binding callbacks — fixes async compile race.
+                            inst._pendingStart = true;
                         } catch(e) {
                             const friendly = _friendlyScriptError(e, null, newObj.scriptName, newObj.label, 'cloneObject-start');
                             for (const line of friendly) _logConsole(line, '#f87171');
