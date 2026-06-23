@@ -88,7 +88,7 @@ export function switchToScene(index) {
 
 // ── Transition guard — prevents overlapping gotoScene / restartScene calls ──
 let _sceneTransitioning = false;
-export function _resetSceneTransitionGuard() { _sceneTransitioning = false; }
+export function _resetSceneTransitionGuard() { _sceneTransitioning = false; state._sceneTransitioning = false; }
 
 // ── Switch scene during PLAY MODE (does NOT corrupt editor snapshots) ──
 // This is what gotoScene() calls at runtime. It:
@@ -116,6 +116,9 @@ export function playModeGotoScene(index, onReady = null) {
     // This prevents double-restarts and clone-interruption glitches.
     if (_sceneTransitioning) return;
     _sceneTransitioning = true;
+    // Mirror onto state so sandbox.js cloneSelf/spawnObject can guard against
+    // spawning new objects during the async teardown window.
+    state._sceneTransitioning = true;
 
     const target = state.scenes[index];
     if (!target) { _sceneTransitioning = false; return; }
@@ -140,7 +143,10 @@ export function playModeGotoScene(index, onReady = null) {
             state.sceneContainer?.removeChild(obj);
         }
         // Destroy normal (non-DDOL) objects.
+        // Mark _rt_text_ nodes as stale BEFORE destroying so DDOL objects'
+        // _drawTextCache stale-check detects them and recreates cleanly.
         for (const obj of normalObjects) {
+            if (obj.label?.startsWith('_rt_text_')) { obj._markedForDestroy = true; obj._pixiText = null; }
             state.sceneContainer?.removeChild(obj);
             try { obj.destroy({ children: true }); } catch(_) {}
         }
@@ -293,6 +299,7 @@ export function playModeGotoScene(index, onReady = null) {
                     // restartScene / gotoScene calls during the transition but
                     // allows a new call once the scene is fully live.
                     _sceneTransitioning = false;
+                    state._sceneTransitioning = false;
                 });
             });
             import('./engine.scripting.js').then(m =>
@@ -303,10 +310,12 @@ export function playModeGotoScene(index, onReady = null) {
             // preventing the scene switcher from freezing for the rest of the session.
             console.error('[Zengine] playModeGotoScene failed:', err);
             _sceneTransitioning = false;
+            state._sceneTransitioning = false;
         });
     }).catch(err => {
         console.error('[Zengine] playModeGotoScene (teardown) failed:', err);
         _sceneTransitioning = false;
+        state._sceneTransitioning = false;
     });
 }
 
@@ -337,43 +346,80 @@ export function playModeRestartScene(onReady = null) {
     const snap = state.scenes[currentIdx]?.snapshot ?? (isSameScene ? state._playSnapshot : null);
 
     // ── Flush any pending destroy() calls synchronously ───────────────────
-    // api.destroy(other) only sets _markedForDestroy = true; actual removal
-    // happens on the next ticker tick.  If restartScene() fires before that
-    // tick (e.g. wait(0.1) → destroy → wait(2) → restart), the object is
-    // still in state.gameObjects.  The fast-path reset would re-apply its
-    // snapshot transform, and the following tick would then delete it —
-    // leaving the restarted scene missing that object permanently.
-    // Physics body removal happens inside stopPhysics() moments later, so
-    // we only need to strip the PIXI node and gameObjects entry here.
+    // api.destroy(other) / destroySelf() only set _markedForDestroy = true;
+    // actual removal normally happens on the next ticker tick.  If
+    // restartScene() fires before that tick (e.g. wait(0.1) → destroy →
+    // wait(2) → restart) the object is still in state.gameObjects.
+    //
+    // CRITICAL: the fast path can only RESET existing PIXI objects in place —
+    // it cannot recreate objects that have been removed.  If any placed
+    // (non-runtime-spawned) scene object was destroyed mid-play (e.g. an
+    // obstacle hit by the player) we must fall back to a full rebuild via
+    // playModeGotoScene so the snapshot can restore it from scratch.
+    //
+    // We also fully PIXI-destroy flushed objects here so they are not orphaned
+    // in memory. Physics body cleanup happens inside stopPhysics() which is
+    // called moments later inside playModeGotoScene / this function's teardown.
+    let _destroyFlushed = false;
     for (const obj of state.gameObjects.slice()) {
         if (obj._markedForDestroy && !obj._ddol) {
+            // Any placed (non-runtime) object that was destroyed cannot be
+            // recovered by the fast path — force full rebuild.
+            if (!obj._runtimeSpawned) _destroyFlushed = true;
             obj.visible = false;
             try { state.sceneContainer?.removeChild(obj); } catch(_) {}
+            try { obj.destroy({ children: true }); } catch(_) {}
             const idx = state.gameObjects.indexOf(obj);
             if (idx !== -1) state.gameObjects.splice(idx, 1);
-            obj._markedForDestroy = false;
+            // Do NOT reset _markedForDestroy — object is fully gone now.
         }
     }
 
+    // ── Detect already-ticker-processed destroys ────────────────────────────
+    // destroySelf() / destroyObject() set _markedForDestroy = true, but the
+    // ticker calls _destroyObject() on the VERY NEXT FRAME — which removes the
+    // object from state.gameObjects and resets _markedForDestroy = false.
+    // If restartScene() fires AFTER that tick (e.g. wait(0.5) → ticker removes
+    // player on frame 2 → 0.5s later restartScene runs), the flush loop above
+    // finds nothing pending.  The fast path then runs with a missing placed
+    // object → freeze + glitch.
+    //
+    // Fix: snap.objects is the ground truth for how many placed objects should
+    // exist.  Count placed (non-runtime, non-ddol, non-rt_text) objects still
+    // in state.gameObjects.  If fewer than the snapshot, something was already
+    // destroyed by the ticker — force a full snapshot rebuild (same as Unity /
+    // Godot's reload_current_scene which always restores from saved state).
+    const placedNow = state.gameObjects.filter(
+        o => !o._runtimeSpawned && !o._ddol && !(o.label?.startsWith('_rt_text_'))
+    ).length;
+    const _missingPlacedObjs = placedNow < (snap.objects?.length ?? 0);
+
     // If there are runtime-spawned objects (excluding _rt_text_ overlay nodes,
     // which are always runtime-spawned but are safe to destroy+recreate in the
-    // fast path) or no usable snapshot, fall back to full rebuild.
-    // _rt_text_* nodes are cleaned up below during the fast-path reset.
+    // fast path), no usable snapshot, any placed scene object was destroyed
+    // mid-play (either still pending or already ticker-processed), fall back to
+    // full rebuild so the snapshot can restore every object from scratch.
     const hasRuntimeObjs = state.gameObjects.some(
         o => o._runtimeSpawned && !o._ddol && !(o.label?.startsWith('_rt_text_'))
     );
-    if (!snap?.objects?.length || hasRuntimeObjs) {
+    if (!snap?.objects?.length || hasRuntimeObjs || _destroyFlushed || _missingPlacedObjs) {
         playModeGotoScene(currentIdx, onReady);
         return;
     }
 
     _sceneTransitioning = true;
+    state._sceneTransitioning = true;
 
     // Separate out _rt_text_ overlay nodes — destroy them now so drawText
     // recreates them cleanly on the next frame.  They must NOT be matched
     // against snap.objects (they were runtime-created, not in the snapshot).
     const rtTextObjects = state.gameObjects.filter(o => o.label?.startsWith('_rt_text_'));
     for (const obj of rtTextObjects) {
+        // Mark as stale BEFORE destroying so any DDOL object's _drawTextCache stale-
+        // check (_markedForDestroy flag) correctly detects this node and recreates it
+        // instead of trying to update a PIXI-destroyed text on the next frame.
+        obj._markedForDestroy = true;
+        obj._pixiText = null;
         state.sceneContainer?.removeChild(obj);
         try { obj.destroy({ children: true }); } catch(_) {}
     }
@@ -445,6 +491,7 @@ export function playModeRestartScene(onReady = null) {
                 sm.startScripts(ddolObjects);
                 if (onReady) onReady();
                 _sceneTransitioning = false;
+                state._sceneTransitioning = false;
             });
         });
         import('./engine.scripting.js').then(m =>
@@ -453,6 +500,7 @@ export function playModeRestartScene(onReady = null) {
     }).catch(err => {
         console.error('[Zengine] playModeRestartScene failed:', err);
         _sceneTransitioning = false;
+        state._sceneTransitioning = false;
     });
 }
 

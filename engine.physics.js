@@ -1257,7 +1257,7 @@ export function stepPhysics(dt) {
         // If the upward speed is below threshold, kill it — no more micro-bounces.
         if (vy < 0 && Math.abs(vy) < BOUNCE_KILL_Y) vy = 0;
         // After a ceiling hit the body bounces down — same kill logic.
-        if (vy > 0 && onGround && Math.abs(vy) < BOUNCE_KILL_Y) vy = 0;
+        if (vy > 0 && dynFlatGround && Math.abs(vy) < BOUNCE_KILL_Y) vy = 0;
 
         // ── Bounce-kill on X ─────────────────────────────────────
         if (Math.abs(vx) < BOUNCE_KILL_X) vx = 0;

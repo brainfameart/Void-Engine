@@ -428,9 +428,13 @@ function bounceY()          { api.bounceY(); velocityY=api.velocityY; vy=velocit
 // own code changed velocityX/Y vs an external proxy setting api._vel directly.
 var _velXWritten = 0, _velYWritten = 0;
 function _syncVelocityToApi() {
-    // If the local var changed since last frame → script wrote it → push to api
+    // If the local var changed since last frame → script wrote it → push to api.
+    // ALSO set _velDirty / _velSetX on the raw object so that dynamic physics
+    // bodies (which require the dirty flag) receive the new velocity.  The
+    // proxy setter already does this; this sync path must match it.
     if (velocityX !== _velXWritten) {
         api._vel.x = velocityX;
+        if (api._ref) { api._ref._velDirty = true; api._ref._velSetX = true; }
         _velXWritten = velocityX;
     } else {
         // No local write → pull from api (proxy or navigation may have set it)
@@ -439,6 +443,7 @@ function _syncVelocityToApi() {
     }
     if (velocityY !== _velYWritten) {
         api._vel.y = velocityY;
+        if (api._ref) { api._ref._velDirty = true; api._ref._velSetY = true; }
         _velYWritten = velocityY;
     } else {
         velocityY = api._vel.y;

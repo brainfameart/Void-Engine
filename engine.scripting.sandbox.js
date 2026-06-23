@@ -1431,6 +1431,10 @@ function _buildSandbox(obj, instRef) {
          *   cloneSelf(x, y, (c) => { c.velocityX = 3 })  — old style still works
          */
         cloneSelf(wx, wy, optsOrCb = null, onSpawnedArg = null) {
+            // Guard: block new spawns during scene transitions to prevent orphaned
+            // clones — repeat() timers can fire in the async teardown window between
+            // restartScene() being called and stopScripts() completing.
+            if (state._sceneTransitioning) return null;
             let onSpawned = onSpawnedArg;
             let initOpts  = null;
             if (typeof optsOrCb === 'function') { onSpawned = optsOrCb; }
@@ -2749,7 +2753,10 @@ function _buildSandbox(obj, instRef) {
 // Call AFTER createImageObject so the new object already has its sprite/gizmos.
 function _deepCopyObjectProps(src, dst) {
     // Mark as a runtime clone so hierarchy hides it and onStart is skipped
-    dst._isClone = true;
+    dst._isClone        = true;
+    dst._runtimeSpawned = true; // clones are runtime-created objects;
+    // this lets stopPlayMode destroy them on Stop and
+    // hasRuntimeObjs detect them for a full restart rebuild.
 
     // Each clone gets its own fresh variable bag — never inherited from source
     dst._opts        = {};
